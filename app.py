@@ -4,7 +4,7 @@ import folium
 from streamlit_folium import st_folium
 import time
 
-API_KEY = "PUT_YOUR_API_KEY_HERE"
+API_KEY = "tyy8znhl0u5kbbb2vuvdhfetmsil041u"
 
 st.set_page_config(layout="wide")
 st.title("🌍 Infinite Radar ✈️")
