@@ -1,1 +1,42 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Infinite Radar</title>
+
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.111/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.111/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div id="cesiumContainer"></div>
+
+<div id="topbar">
+  Server:
+  <select id="server">
+    <option value="expert">Expert</option>
+    <option value="training">Training</option>
+    <option value="casual">Casual</option>
+  </select>
+
+  Mode:
+  <select id="mode">
+    <option value="radar">Radar</option>
+    <option value="ife">IFE</option>
+  </select>
+</div>
+
+<div id="cockpit">
+  <div id="pfd">PFD</div>
+  <div id="nd">ND</div>
+</div>
+
+<div id="infoPanel">Click aircraft</div>
+
+<script src="app.js"></script>
+
+</body>
+</html>
