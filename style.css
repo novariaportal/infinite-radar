@@ -10,48 +10,53 @@ body {
   height: 100vh;
 }
 
-/* UI PANEL */
-.ui {
+/* TOP BAR */
+#topBar {
   position: absolute;
-  top: 20px;
-  left: 20px;
-}
-
-.panel {
-  background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(12px);
-  padding: 15px;
-  border-radius: 10px;
-  color: white;
-  width: 220px;
-}
-
-.panel h3 {
-  margin-top: 0;
-}
-
-/* SELECT */
-select {
+  top: 0;
   width: 100%;
-  margin-top: 5px;
-  margin-bottom: 10px;
-  padding: 5px;
-  background: black;
+  height: 50px;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
   color: white;
-  border: 1px solid #444;
 }
 
-/* INFO TEXT */
-#info p {
-  margin: 5px 0;
-  font-size: 12px;
+/* HUD */
+#hud {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 40px;
+}
+
+.hudBox {
+  color: white;
+  text-align: center;
+  font-size: 14px;
+}
+
+/* BOTTOM BAR */
+#bottomBar {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  justify-content: space-around;
+  padding: 10px;
+  color: white;
 }
 
 /* MODES */
 .ife-mode {
-  filter: brightness(0.8) contrast(1.05);
+  filter: brightness(0.75);
 }
 
 .radar-mode {
-  filter: brightness(1.2) contrast(1.3);
+  filter: brightness(1.3) contrast(1.2);
 }
