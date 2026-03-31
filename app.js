@@ -10,13 +10,10 @@ const viewer = new Cesium.Viewer("cesiumContainer", {
   geocoder: true,
   baseLayerPicker: true
 });
-
 async function loadImagery() {
   try {
-    const imageryLayer = viewer.imageryLayers.addImageryProvider(
-      await Cesium.IonImageryProvider.fromAssetId(3830183)
-    );
-
+    const provider = await Cesium.IonImageryProvider.fromAssetId(3830183);
+    const imageryLayer = viewer.imageryLayers.addImageryProvider(provider);
     await viewer.zoomTo(imageryLayer);
   } catch (error) {
     console.log(error);
