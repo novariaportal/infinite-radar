@@ -1,48 +1,50 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Infinite Tracker</title>
-
-  <link rel="stylesheet" href="style.css">
-
-  <script src="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Cesium.js"></script>
-  <link href="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css" />
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Cesium.js"></script>
+  <link
+    href="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Widgets/widgets.css"
+    rel="stylesheet"
+  />
 </head>
+<body class="mode-ife">
+  <div id="ui">
+    <div class="panel">
+      <h1>Infinite Flight EX3 Tracker</h1>
+      <div class="row">
+        <label>API Key</label>
+        <input id="apiKeyInput" type="password" placeholder="Enter Infinite Flight API key" />
+      </div>
 
-<body>
+      <div class="row">
+        <label>Server</label>
+        <select id="serverSelect">
+          <option value="">Select server</option>
+        </select>
+      </div>
 
-<div id="cesiumContainer"></div>
+      <div class="row actions">
+        <button id="connectBtn">Connect</button>
+        <button id="modeBtn">Switch to Radar</button>
+      </div>
 
-<!-- TOP BAR -->
-<div id="topBar">
-  <div>
-    Server:
-    <select id="server">
-      <option value="expert">Expert</option>
-      <option value="training">Training</option>
-      <option value="casual">Casual</option>
-    </select>
+      <div id="status">Idle</div>
+    </div>
+
+    <div class="hud" id="hud">
+      <div>Callsign: <span id="hudCallsign">-</span></div>
+      <div>ALT: <span id="hudAlt">-</span> ft</div>
+      <div>SPD: <span id="hudSpd">-</span> kts</div>
+      <div>HDG: <span id="hudHdg">-</span>°</div>
+    </div>
   </div>
 
-  <div>
-    Mode:
-    <select id="mode">
-      <option value="ife">IFE</option>
-      <option value="radar">Radar</option>
-    </select>
-  </div>
-</div>
+  <div id="cesiumContainer"></div>
 
-<!-- HUD -->
-<div id="hud">
-  <div>SPD: <span id="spd">--</span></div>
-  <div>ALT: <span id="alt">--</span></div>
-  <div>HDG: <span id="hdg">--</span></div>
-</div>
-
-<script src="app.js"></script>
-
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
