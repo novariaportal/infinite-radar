@@ -25,7 +25,7 @@ async function loadImagery() {
 }
 
 loadImagery();
-}
+
 
 // start camera properly
 viewer.camera.setView({
