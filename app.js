@@ -4,57 +4,41 @@ Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOi
 /* =========================
    VIEWER
 ========================= */
-// Grant CesiumJS access to your ion assets
-Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew";
 const viewer = new Cesium.Viewer("cesiumContainer", {
-  geocoder: true,
-  baseLayerPicker: true
+  terrainProvider: Cesium.createWorldTerrain(),
+  baseLayerPicker: false,
+  geocoder: false,
+  animation: false,
+  timeline: false
 });
-async function loadImagery() {
-  try {
-    const provider = await Cesium.IonImageryProvider.fromAssetId(3830183);
-    const imageryLayer = viewer.imageryLayers.addImageryProvider(provider);
-    await viewer.zoomTo(imageryLayer);
-  } catch (error) {
-    console.log(error);
-  }
-}
 
-loadImagery();
-
-
-// start camera properly
 viewer.camera.setView({
   destination: Cesium.Cartesian3.fromDegrees(0, 20, 20000000)
 });
 
 viewer.scene.globe.baseColor = Cesium.Color.BLACK;
-viewer.clock.shouldAnimate = true;
 
 let aircraft = {};
 let selected = null;
 
 /* =========================
-   DEBUG LOGGER
+   MODE SYSTEM
 ========================= */
-function debug(label, data) {
-  console.log(`[DEBUG] ${label}:`, data);
-}
-
-/* =========================
-   MODE HANDLING
-========================= */
-function updateMode() {
-  const mode = document.getElementById("mode").value;
-
+function applyMode(mode) {
   document.body.classList.toggle("radar-mode", mode === "radar");
   document.body.classList.toggle("ife-mode", mode === "ife");
+
+  viewer.scene.globe.enableLighting = mode === "ife";
 }
 
-document.getElementById("mode").addEventListener("change", updateMode);
+document.getElementById("mode").addEventListener("change", e => {
+  applyMode(e.target.value);
+});
+
+applyMode("radar");
 
 /* =========================
-   SMOOTH INTERPOLATION
+   SMOOTH MOVEMENT
 ========================= */
 function smoothMove(entity, newPos) {
   const now = Cesium.JulianDate.now();
@@ -72,55 +56,54 @@ function smoothMove(entity, newPos) {
 }
 
 /* =========================
-   LOAD FLIGHTS
+   AIRCRAFT STYLE
+========================= */
+function createAircraft(f, pos) {
+  return viewer.entities.add({
+    position: pos,
+    billboard: {
+      image: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+      scale: 0.03,
+      color: Cesium.Color.WHITE
+    },
+    label: {
+      text: f.callsign || "",
+      font: "10px sans-serif",
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      pixelOffset: new Cesium.Cartesian2(0, -25)
+    },
+    path: {
+      material: Cesium.Color.CYAN.withAlpha(0.7),
+      width: 2,
+      trailTime: 300
+    }
+  });
+}
+
+/* =========================
+   LOAD DATA
 ========================= */
 async function loadFlights() {
   try {
-    debug("Fetching sessions", "");
-
-    const sessionsRes = await fetch(
+    const sessions = await (await fetch(
       `https://api.infiniteflight.com/public/v2/sessions?apikey=${API_KEY}`
-    );
+    )).json();
 
-    const sessions = await sessionsRes.json();
-    debug("Sessions response", sessions);
+    if (!sessions.result) return;
 
-    if (!sessions.result || sessions.result.length === 0) {
-      console.error("❌ No sessions found (API issue or key wrong)");
-      return;
-    }
+    const session = sessions.result[0];
 
-    const server = document.getElementById("server").value.toLowerCase();
+    const flights = await (await fetch(
+      `https://api.infiniteflight.com/public/v2/sessions/${session.id}/flights?apikey=${API_KEY}`
+    )).json();
 
-    // safer session selection
-    const session = sessions.result.find(s =>
-      s.name.toLowerCase().includes(server)
-    );
-
-    if (!session) {
-      console.warn("⚠️ No matching session found. Using first session.");
-    }
-
-    const activeSession = session || sessions.result[0];
-
-    debug("Using session", activeSession);
-
-    const flightsRes = await fetch(
-      `https://api.infiniteflight.com/public/v2/sessions/${activeSession.id}/flights?apikey=${API_KEY}`
-    );
-
-    const flights = await flightsRes.json();
-    debug("Flights response", flights);
-
-    if (!flights.result) {
-      console.error("❌ Flights API failed");
-      return;
-    }
+    if (!flights.result) return;
 
     const activeIds = new Set(flights.result.map(f => f.id));
 
     flights.result.forEach(f => {
-      // FIX: allow 0 values
       if (f.latitude == null || f.longitude == null) return;
 
       const pos = Cesium.Cartesian3.fromDegrees(
@@ -129,102 +112,68 @@ async function loadFlights() {
         (f.altitude || 0) * 0.3048
       );
 
-      // CREATE AIRCRAFT
       if (!aircraft[f.id]) {
-        aircraft[f.id] = viewer.entities.add({
-          id: f.id,
-          position: pos,
-          billboard: {
-            image: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-            scale: 0.06
-          },
-          path: {
-            material: Cesium.Color.CYAN,
-            width: 2,
-            trailTime: 120
-          }
-        });
-
-        debug("Created aircraft", f.id);
+        aircraft[f.id] = createAircraft(f, pos);
       } else {
         smoothMove(aircraft[f.id], pos);
       }
-
-      if (selected === f.id) {
-        updateCockpit(f);
-      }
     });
 
-    // CLEANUP
+    // cleanup
     Object.keys(aircraft).forEach(id => {
       if (!activeIds.has(id)) {
         viewer.entities.remove(aircraft[id]);
         delete aircraft[id];
-        debug("Removed aircraft", id);
       }
     });
 
-    debug("Aircraft count", Object.keys(aircraft).length);
-
   } catch (err) {
-    console.error("❌ API ERROR:", err);
+    console.error(err);
   }
 }
 
 /* =========================
-   CLICK SELECTION
+   CLICK SELECT
 ========================= */
 viewer.screenSpaceEventHandler.setInputAction(click => {
   const picked = viewer.scene.pick(click.position);
-
   if (picked && picked.id) {
     selected = picked.id.id;
-    debug("Selected aircraft", selected);
   }
 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
 /* =========================
-   COCKPIT
+   COUNTRY BORDERS + LABELS
 ========================= */
-function updateCockpit(f) {
-  document.getElementById("pfd").innerHTML = `
-    ALT ${Math.round(f.altitude)} ft<br>
-    SPD ${Math.round(f.speed)} kts<br>
-    HDG ${Math.round(f.heading)}°
-  `;
+async function loadCountries() {
+  const dataSource = await Cesium.GeoJsonDataSource.load(
+    "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson"
+  );
 
-  document.getElementById("nd").innerHTML = `
-    LAT ${f.latitude.toFixed(2)}<br>
-    LON ${f.longitude.toFixed(2)}
-  `;
+  viewer.dataSources.add(dataSource);
+
+  dataSource.entities.values.forEach(entity => {
+    entity.polygon.material = Cesium.Color.TRANSPARENT;
+    entity.polygon.outline = true;
+    entity.polygon.outlineColor = Cesium.Color.WHITE.withAlpha(0.2);
+
+    entity.label = {
+      text: entity.name,
+      font: "12px sans-serif",
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      scale: 0.5
+    };
+  });
 }
 
-/* =========================
-   CAMERA (IFE MODE)
-========================= */
-function updateCamera() {
-  if (document.getElementById("mode").value !== "ife") return;
-  if (!selected || !aircraft[selected]) return;
-
-  viewer.trackedEntity = aircraft[selected];
-}
-
-/* =========================
-   DEBUG STARTUP
-========================= */
-console.log("🚀 App started");
-console.log("👉 If nothing shows:");
-console.log("- Check API key");
-console.log("- Open DevTools (F12)");
-console.log("- Look for [DEBUG] logs below");
+loadCountries();
 
 /* =========================
    MAIN LOOP
 ========================= */
 setInterval(() => {
   loadFlights();
-  updateCamera();
 }, 2000);
-
-/* INIT */
-updateMode();
