@@ -1,184 +1,205 @@
 const API_KEY = "tyy8znhl0u5kbbb2vuvdhfetmsil041u";
 Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew";
 
+const API_BASE = "https://api.infiniteflight.com/public/v2";
+const POLL_MS = 5000;
 
-/* =========================
-   VIEWER
-========================= */
-const viewer = new Cesium.Viewer("cesiumContainer", {
-  terrainProvider: Cesium.createWorldTerrain(),
-  baseLayerPicker: false,
-  geocoder: false,
-  animation: false,
-  timeline: false
-});
+const state = {
+  apiKey: "",
+  sessionId: "",
+  mode: "ife",
+  polling: null,
+  viewer: null,
+  aircraft: new Map(), // flightId -> { entity, last, target, trailPositions }
+  selectedFlightId: null
+};
 
-viewer.scene.globe.baseColor = Cesium.Color.BLACK;
+const els = {
+  apiKeyInput: document.getElementById("apiKeyInput"),
+  serverSelect: document.getElementById("serverSelect"),
+  connectBtn: document.getElementById("connectBtn"),
+  modeBtn: document.getElementById("modeBtn"),
+  status: document.getElementById("status"),
+  hudCallsign: document.getElementById("hudCallsign"),
+  hudAlt: document.getElementById("hudAlt"),
+  hudSpd: document.getElementById("hudSpd"),
+  hudHdg: document.getElementById("hudHdg")
+};
 
-/* =========================
-   MODE SYSTEM
-========================= */
-function setMode(mode) {
-  document.body.classList.toggle("ife-mode", mode === "ife");
-  document.body.classList.toggle("radar-mode", mode === "radar");
-
-  viewer.scene.globe.enableLighting = (mode === "ife");
+function setStatus(msg) {
+  els.status.textContent = msg;
+  console.log("[EX3]", msg);
 }
 
-document.getElementById("mode").addEventListener("change", e => {
-  setMode(e.target.value);
-});
+function authHeaders() {
+  return {
+    Authorization: `Bearer ${state.apiKey}`,
+    "Content-Type": "application/json"
+  };
+}
 
-setMode("ife");
+async function apiGet(path) {
+  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  if (json.errorCode !== 0) throw new Error(`API errorCode=${json.errorCode}`);
+  return json.result;
+}
 
-/* =========================
-   AIRCRAFT SYSTEM
-========================= */
-let aircraft = {};
-let selected = null;
+function initCesium() {
+  // Optional: set your Cesium Ion token if needed
+  // Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew";
 
-function createAircraft(f, pos) {
-  return viewer.entities.add({
-    id: f.id,
-    position: pos,
-
-    billboard: {
-      image: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-      scale: 0.04
-    },
-
-    label: {
-      text: f.callsign || "",
-      font: "10px sans-serif",
-      fillColor: Cesium.Color.WHITE,
-      outlineColor: Cesium.Color.BLACK,
-      outlineWidth: 2,
-      pixelOffset: new Cesium.Cartesian2(0, -25)
-    },
-
-    path: {
-      material: Cesium.Color.CYAN.withAlpha(0.7),
-      width: 2,
-      trailTime: 300
-    }
+  state.viewer = new Cesium.Viewer("cesiumContainer", {
+    animation: false,
+    timeline: false,
+    sceneModePicker: false,
+    baseLayerPicker: true,
+    terrain: Cesium.Terrain.fromWorldTerrain()
   });
+
+  state.viewer.scene.globe.enableLighting = true;
 }
 
-/* =========================
-   HUD UPDATE
-========================= */
-function updateHUD(f) {
-  document.getElementById("spd").textContent = Math.round(f.groundSpeed || 0);
-  document.getElementById("alt").textContent = Math.round(f.altitude || 0);
-  document.getElementById("hdg").textContent = Math.round(f.heading || 0);
+async function loadSessions() {
+  setStatus("Loading sessions...");
+  const sessions = await apiGet("/sessions");
+
+  els.serverSelect.innerHTML = `<option value="">Select server</option>`;
+  for (const s of sessions) {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = `${s.name} (${s.userCount}/${s.maxUsers})`;
+    els.serverSelect.appendChild(opt);
+  }
+
+  setStatus(`Loaded ${sessions.length} sessions`);
 }
 
-/* =========================
-   SMOOTH MOVEMENT
-========================= */
-function smoothMove(entity, newPos) {
+function upsertAircraft(f) {
+  const viewer = state.viewer;
   const now = Cesium.JulianDate.now();
+  const targetPos = Cesium.Cartesian3.fromDegrees(f.longitude, f.latitude, f.altitude * 0.3048);
 
-  const property = new Cesium.SampledPositionProperty();
-  const current = entity.position.getValue(now);
+  let rec = state.aircraft.get(f.flightId);
+  if (!rec) {
+    const sampled = new Cesium.SampledPositionProperty();
+    sampled.addSample(now, targetPos);
 
-  if (!current) return;
+    const entity = viewer.entities.add({
+      id: f.flightId,
+      position: sampled,
+      point: {
+        pixelSize: state.mode === "radar" ? 8 : 5,
+        color: state.mode === "radar" ? Cesium.Color.CYAN : Cesium.Color.WHITE
+      },
+      label: {
+        text: f.callsign || "UNKN",
+        font: "12px sans-serif",
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(0, -18),
+        scale: 0.9
+      },
+      polyline: {
+        positions: [],
+        width: 2,
+        material: Cesium.Color.SKYBLUE.withAlpha(0.6)
+      }
+    });
 
-  property.addSample(now, current);
-
-  const future = Cesium.JulianDate.addSeconds(now, 2, new Cesium.JulianDate());
-  property.addSample(future, newPos);
-
-  entity.position = property;
+    rec = { entity, sampled, trailPositions: [targetPos], last: f, target: f };
+    state.aircraft.set(f.flightId, rec);
+  } else {
+    rec.target = f;
+    rec.sampled.addSample(now, targetPos);
+    rec.trailPositions.push(targetPos);
+    if (rec.trailPositions.length > 50) rec.trailPositions.shift();
+    rec.entity.polyline.positions = rec.trailPositions;
+    rec.last = f;
+  }
 }
 
-/* =========================
-   CLICK SELECT
-========================= */
-viewer.screenSpaceEventHandler.setInputAction(click => {
-  const picked = viewer.scene.pick(click.position);
-
-  if (picked && picked.id) {
-    selected = picked.id.id;
+function removeMissingAircraft(activeIds) {
+  for (const [flightId, rec] of state.aircraft.entries()) {
+    if (!activeIds.has(flightId)) {
+      state.viewer.entities.remove(rec.entity);
+      state.aircraft.delete(flightId);
+    }
   }
-}, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+}
 
-/* =========================
-   API LOADING (CORRECT)
-========================= */
-async function loadFlights() {
+function updateHud() {
+  const rec = state.selectedFlightId ? state.aircraft.get(state.selectedFlightId) : null;
+  if (!rec) return;
+  const f = rec.last;
+
+  els.hudCallsign.textContent = f.callsign || "-";
+  els.hudAlt.textContent = Math.round(f.altitude ?? 0);
+  els.hudSpd.textContent = Math.round(f.speed ?? 0);
+  els.hudHdg.textContent = Math.round(f.heading ?? 0);
+}
+
+async function pollFlights() {
+  if (!state.sessionId) return;
   try {
-    // 1. GET SESSIONS
-    const sessionsRes = await fetch(
-      `https://api.infiniteflight.com/public/v2/sessions?apikey=${API_KEY}`
-    );
-    const sessions = await sessionsRes.json();
+    const flights = await apiGet(`/sessions/${state.sessionId}/flights`);
+    const ids = new Set();
 
-    if (!sessions.result) {
-      console.error("Sessions error:", sessions);
-      return;
+    for (const f of flights) {
+      ids.add(f.flightId);
+      upsertAircraft(f);
     }
 
-    // 2. PICK SERVER
-    const server = document.getElementById("server").value.toLowerCase();
+    removeMissingAircraft(ids);
 
-    const session = sessions.result.find(s =>
-      s.name.toLowerCase().includes(server)
-    );
-
-    if (!session) {
-      console.warn("No session found for:", server);
-      return;
+    // pick first flight if none selected
+    if (!state.selectedFlightId && flights.length) {
+      state.selectedFlightId = flights[0].flightId;
     }
 
-    // 3. GET FLIGHTS
-    const flightsRes = await fetch(
-      `https://api.infiniteflight.com/public/v2/sessions/${session.id}/flights?apikey=${API_KEY}`
-    );
-    const flights = await flightsRes.json();
-
-    if (!flights.result) {
-      console.error("Flights error:", flights);
-      return;
-    }
-
-    const activeIds = new Set(flights.result.map(f => f.id));
-
-    // 4. RENDER
-    flights.result.forEach(f => {
-      if (f.latitude == null || f.longitude == null) return;
-
-      const pos = Cesium.Cartesian3.fromDegrees(
-        f.longitude,
-        f.latitude,
-        (f.altitude || 0) * 0.3048
-      );
-
-      if (!aircraft[f.id]) {
-        aircraft[f.id] = createAircraft(f, pos);
-      } else {
-        smoothMove(aircraft[f.id], pos);
-      }
-
-      if (selected === f.id) {
-        updateHUD(f);
-      }
-    });
-
-    // 5. CLEANUP OLD PLANES
-    Object.keys(aircraft).forEach(id => {
-      if (!activeIds.has(id)) {
-        viewer.entities.remove(aircraft[id]);
-        delete aircraft[id];
-      }
-    });
-
+    updateHud();
+    setStatus(`Tracking ${flights.length} flights`);
   } catch (err) {
-    console.error("API ERROR:", err);
+    setStatus(`Polling error: ${err.message}`);
   }
 }
 
-/* =========================
-   LOOP
-========================= */
-setInterval(loadFlights, 3000);
+function setMode(nextMode) {
+  state.mode = nextMode;
+  document.body.classList.toggle("mode-ife", nextMode === "ife");
+  document.body.classList.toggle("mode-radar", nextMode === "radar");
+  els.modeBtn.textContent = nextMode === "ife" ? "Switch to Radar" : "Switch to IFE";
+}
+
+function startPolling() {
+  if (state.polling) clearInterval(state.polling);
+  pollFlights();
+  state.polling = setInterval(pollFlights, POLL_MS);
+}
+
+els.connectBtn.addEventListener("click", async () => {
+  try {
+    state.apiKey = els.apiKeyInput.value.trim();
+    state.sessionId = els.serverSelect.value;
+    if (!state.apiKey) throw new Error("Missing API key");
+    if (!state.sessionId) throw new Error("Select a server");
+
+    setStatus("Connecting...");
+    startPolling();
+  } catch (err) {
+    setStatus(err.message);
+  }
+});
+
+els.modeBtn.addEventListener("click", () => {
+  setMode(state.mode === "ife" ? "radar" : "ife");
+});
+
+(async function bootstrap() {
+  initCesium();
+  setMode("ife");
+  setStatus("Ready");
+})();
