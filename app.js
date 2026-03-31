@@ -2,32 +2,31 @@ const API_KEY = "tyy8znhl0u5kbbb2vuvdhfetmsil041u";
 Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew";
 
 /* =========================
-   VIEWER (FIXED TERRAIN)
+   VIEWER
 ========================= */
-// Grant CesiumJS access to your ion assets
-Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew";
-
 const viewer = new Cesium.Viewer("cesiumContainer", {
-  geocoder: Cesium.IonGeocodeProviderType.GOOGLE,
+  terrainProvider: Cesium.createWorldTerrain(),
+  baseLayerPicker: true,
+  geocoder: false
 });
 
-try {
-  const imageryLayer = viewer.imageryLayers.addImageryProvider(
-    await Cesium.IonImageryProvider.fromAssetId(3830183),
-  );
-  await viewer.zoomTo(imageryLayer);
-} catch (error) {
-  console.log(error);
-}
+// start camera properly
+viewer.camera.setView({
+  destination: Cesium.Cartesian3.fromDegrees(0, 20, 20000000)
+});
 
-
-// Improve visual feel
 viewer.scene.globe.baseColor = Cesium.Color.BLACK;
 viewer.clock.shouldAnimate = true;
-viewer.clock.multiplier = 1;
 
 let aircraft = {};
 let selected = null;
+
+/* =========================
+   DEBUG LOGGER
+========================= */
+function debug(label, data) {
+  console.log(`[DEBUG] ${label}:`, data);
+}
 
 /* =========================
    MODE HANDLING
@@ -60,45 +59,56 @@ function smoothMove(entity, newPos) {
 }
 
 /* =========================
-   LOAD FLIGHTS (SAFE)
+   LOAD FLIGHTS
 ========================= */
 async function loadFlights() {
   try {
+    debug("Fetching sessions", "");
+
     const sessionsRes = await fetch(
       `https://api.infiniteflight.com/public/v2/sessions?apikey=${API_KEY}`
     );
-    const sessions = await sessionsRes.json();
 
-    if (!sessions.result) {
-      console.error("Sessions failed:", sessions);
+    const sessions = await sessionsRes.json();
+    debug("Sessions response", sessions);
+
+    if (!sessions.result || sessions.result.length === 0) {
+      console.error("❌ No sessions found (API issue or key wrong)");
       return;
     }
 
     const server = document.getElementById("server").value.toLowerCase();
 
+    // safer session selection
     const session = sessions.result.find(s =>
       s.name.toLowerCase().includes(server)
     );
 
     if (!session) {
-      console.warn("No matching session found");
-      return;
+      console.warn("⚠️ No matching session found. Using first session.");
     }
 
+    const activeSession = session || sessions.result[0];
+
+    debug("Using session", activeSession);
+
     const flightsRes = await fetch(
-      `https://api.infiniteflight.com/public/v2/sessions/${session.id}/flights?apikey=${API_KEY}`
+      `https://api.infiniteflight.com/public/v2/sessions/${activeSession.id}/flights?apikey=${API_KEY}`
     );
+
     const flights = await flightsRes.json();
+    debug("Flights response", flights);
 
     if (!flights.result) {
-      console.error("Flights failed:", flights);
+      console.error("❌ Flights API failed");
       return;
     }
 
     const activeIds = new Set(flights.result.map(f => f.id));
 
     flights.result.forEach(f => {
-      if (!f.latitude || !f.longitude) return;
+      // FIX: allow 0 values
+      if (f.latitude == null || f.longitude == null) return;
 
       const pos = Cesium.Cartesian3.fromDegrees(
         f.longitude,
@@ -113,7 +123,7 @@ async function loadFlights() {
           position: pos,
           billboard: {
             image: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-            scale: 0.04
+            scale: 0.06
           },
           path: {
             material: Cesium.Color.CYAN,
@@ -121,26 +131,30 @@ async function loadFlights() {
             trailTime: 120
           }
         });
+
+        debug("Created aircraft", f.id);
       } else {
         smoothMove(aircraft[f.id], pos);
       }
 
-      // UPDATE COCKPIT
       if (selected === f.id) {
         updateCockpit(f);
       }
     });
 
-    // CLEANUP OLD AIRCRAFT
+    // CLEANUP
     Object.keys(aircraft).forEach(id => {
       if (!activeIds.has(id)) {
         viewer.entities.remove(aircraft[id]);
         delete aircraft[id];
+        debug("Removed aircraft", id);
       }
     });
 
+    debug("Aircraft count", Object.keys(aircraft).length);
+
   } catch (err) {
-    console.error("API Error:", err);
+    console.error("❌ API ERROR:", err);
   }
 }
 
@@ -152,17 +166,18 @@ viewer.screenSpaceEventHandler.setInputAction(click => {
 
   if (picked && picked.id) {
     selected = picked.id.id;
+    debug("Selected aircraft", selected);
   }
 }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
 /* =========================
-   COCKPIT UI
+   COCKPIT
 ========================= */
 function updateCockpit(f) {
   document.getElementById("pfd").innerHTML = `
-    ALT ${f.altitude} ft<br>
-    SPD ${f.speed} kts<br>
-    HDG ${f.heading}°
+    ALT ${Math.round(f.altitude)} ft<br>
+    SPD ${Math.round(f.speed)} kts<br>
+    HDG ${Math.round(f.heading)}°
   `;
 
   document.getElementById("nd").innerHTML = `
@@ -172,22 +187,23 @@ function updateCockpit(f) {
 }
 
 /* =========================
-   CAMERA TRACKING (IFE MODE)
+   CAMERA (IFE MODE)
 ========================= */
 function updateCamera() {
   if (document.getElementById("mode").value !== "ife") return;
-  if (!selected) return;
+  if (!selected || !aircraft[selected]) return;
 
   viewer.trackedEntity = aircraft[selected];
 }
 
 /* =========================
-   DEBUG (VERY IMPORTANT)
+   DEBUG STARTUP
 ========================= */
-console.log("App started. If nothing loads:");
+console.log("🚀 App started");
+console.log("👉 If nothing shows:");
 console.log("- Check API key");
-console.log("- Check console errors (F12)");
-console.log("- Check Cesium token");
+console.log("- Open DevTools (F12)");
+console.log("- Look for [DEBUG] logs below");
 
 /* =========================
    MAIN LOOP
@@ -197,5 +213,5 @@ setInterval(() => {
   updateCamera();
 }, 2000);
 
-/* Initialize mode */
+/* INIT */
 updateMode();
