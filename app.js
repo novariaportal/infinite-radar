@@ -1,110 +1,113 @@
 const API_KEY = "tyy8znhl0u5kbbb2vuvdhfetmsil041u";
 Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew";
 
-/* =========================
-   VIEWER
-========================= */
-const viewer = new Cesium.Viewer("cesiumContainer", {
-  terrainProvider: Cesium.createWorldTerrain(),
-  baseLayerPicker: false,
-  geocoder: false,
-  animation: false,
-  timeline: false
-});
+async function init() {
+  const viewer = new Cesium.Viewer("cesiumContainer", {
+    terrainProvider: await Cesium.CesiumTerrainProvider.fromIonAssetId(1),
+    baseLayerPicker: false,
+    geocoder: false,
+    animation: false,
+    timeline: false
+  });
 
-viewer.camera.setView({
-  destination: Cesium.Cartesian3.fromDegrees(0, 20, 20000000)
-});
+  viewer.scene.globe.baseColor = Cesium.Color.BLACK;
 
-viewer.scene.globe.baseColor = Cesium.Color.BLACK;
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(0, 20, 20000000)
+  });
 
-let aircraft = {};
-let selected = null;
+  return viewer;
+}
+
+const viewer = await init();
 
 /* =========================
    MODE SYSTEM
 ========================= */
-function applyMode(mode) {
-  document.body.classList.toggle("radar-mode", mode === "radar");
+function setMode(mode) {
   document.body.classList.toggle("ife-mode", mode === "ife");
+  document.body.classList.toggle("radar-mode", mode === "radar");
 
   viewer.scene.globe.enableLighting = mode === "ife";
 }
 
 document.getElementById("mode").addEventListener("change", e => {
-  applyMode(e.target.value);
+  setMode(e.target.value);
 });
 
-applyMode("radar");
+setMode("ife");
 
 /* =========================
-   SMOOTH MOVEMENT
+   AIRCRAFT
 ========================= */
-function smoothMove(entity, newPos) {
-  const now = Cesium.JulianDate.now();
-  const property = new Cesium.SampledPositionProperty();
+let aircraft = {};
 
-  const current = entity.position.getValue(now);
-  if (!current) return;
-
-  property.addSample(now, current);
-
-  const future = Cesium.JulianDate.addSeconds(now, 2, new Cesium.JulianDate());
-  property.addSample(future, newPos);
-
-  entity.position = property;
-}
-
-/* =========================
-   AIRCRAFT STYLE
-========================= */
 function createAircraft(f, pos) {
   return viewer.entities.add({
     position: pos,
+
     billboard: {
-      image: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-      scale: 0.03,
+      image: "https://cdn-icons-png.flaticon.com/512/0/619.png",
+      scale: 0.04,
       color: Cesium.Color.WHITE
     },
+
     label: {
-      text: f.callsign || "",
-      font: "10px sans-serif",
+      text: f.callsign || "FLIGHT",
+      font: "11px monospace",
       fillColor: Cesium.Color.WHITE,
       outlineColor: Cesium.Color.BLACK,
       outlineWidth: 2,
-      pixelOffset: new Cesium.Cartesian2(0, -25)
+      pixelOffset: new Cesium.Cartesian2(0, -30)
     },
+
     path: {
-      material: Cesium.Color.CYAN.withAlpha(0.7),
+      material: Cesium.Color.CYAN.withAlpha(0.6),
       width: 2,
+      leadTime: 0,
       trailTime: 300
     }
   });
 }
 
+function updateInfo(f) {
+  document.getElementById("callsign").textContent = f.callsign || "—";
+  document.getElementById("alt").textContent = f.altitude ? `${Math.round(f.altitude)} ft` : "—";
+  document.getElementById("speed").textContent = f.groundSpeed ? `${Math.round(f.groundSpeed)} kts` : "—";
+  document.getElementById("heading").textContent = f.heading ? `${Math.round(f.heading)}°` : "—";
+}
+
 /* =========================
-   LOAD DATA
+   SMOOTH MOVE
+========================= */
+function smoothMove(entity, pos) {
+  const now = Cesium.JulianDate.now();
+
+  const prop = new Cesium.SampledPositionProperty();
+  const current = entity.position.getValue(now);
+
+  if (!current) return;
+
+  prop.addSample(now, current);
+
+  const future = Cesium.JulianDate.addSeconds(now, 2, new Cesium.JulianDate());
+  prop.addSample(future, pos);
+
+  entity.position = prop;
+}
+
+/* =========================
+   LOAD REAL FLIGHTS (IF)
 ========================= */
 async function loadFlights() {
   try {
-    const sessions = await (await fetch(
-      `https://api.infiniteflight.com/public/v2/sessions?apikey=${API_KEY}`
-    )).json();
+    const res = await fetch("https://api.infiniteflight.com/public/v2/flights?apikey=YOUR_API_KEY");
+    const data = await res.json();
 
-    if (!sessions.result) return;
+    if (!data.result) return;
 
-    const session = sessions.result[0];
-
-    const flights = await (await fetch(
-      `https://api.infiniteflight.com/public/v2/sessions/${session.id}/flights?apikey=${API_KEY}`
-    )).json();
-
-    if (!flights.result) return;
-
-    const activeIds = new Set(flights.result.map(f => f.id));
-
-    flights.result.forEach(f => {
-      if (f.latitude == null || f.longitude == null) return;
+    data.result.forEach(f => {
+      if (!f.latitude || !f.longitude) return;
 
       const pos = Cesium.Cartesian3.fromDegrees(
         f.longitude,
@@ -117,14 +120,8 @@ async function loadFlights() {
       } else {
         smoothMove(aircraft[f.id], pos);
       }
-    });
 
-    // cleanup
-    Object.keys(aircraft).forEach(id => {
-      if (!activeIds.has(id)) {
-        viewer.entities.remove(aircraft[id]);
-        delete aircraft[id];
-      }
+      updateInfo(f);
     });
 
   } catch (err) {
@@ -132,48 +129,32 @@ async function loadFlights() {
   }
 }
 
-/* =========================
-   CLICK SELECT
-========================= */
-viewer.screenSpaceEventHandler.setInputAction(click => {
-  const picked = viewer.scene.pick(click.position);
-  if (picked && picked.id) {
-    selected = picked.id.id;
-  }
-}, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+setInterval(loadFlights, 3000);
 
 /* =========================
-   COUNTRY BORDERS + LABELS
+   COUNTRY LAYERS
 ========================= */
 async function loadCountries() {
-  const dataSource = await Cesium.GeoJsonDataSource.load(
+  const ds = await Cesium.GeoJsonDataSource.load(
     "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson"
   );
 
-  viewer.dataSources.add(dataSource);
+  viewer.dataSources.add(ds);
 
-  dataSource.entities.values.forEach(entity => {
-    entity.polygon.material = Cesium.Color.TRANSPARENT;
-    entity.polygon.outline = true;
-    entity.polygon.outlineColor = Cesium.Color.WHITE.withAlpha(0.2);
+  ds.entities.values.forEach(e => {
+    e.polygon.material = Cesium.Color.TRANSPARENT;
+    e.polygon.outline = true;
+    e.polygon.outlineColor = Cesium.Color.WHITE.withAlpha(0.15);
 
-    entity.label = {
-      text: entity.name,
-      font: "12px sans-serif",
+    e.label = {
+      text: e.name,
+      font: "10px sans-serif",
       fillColor: Cesium.Color.WHITE,
       outlineColor: Cesium.Color.BLACK,
       outlineWidth: 2,
-      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      scale: 0.5
+      scale: 0.6
     };
   });
 }
 
 loadCountries();
-
-/* =========================
-   MAIN LOOP
-========================= */
-setInterval(() => {
-  loadFlights();
-}, 2000);
