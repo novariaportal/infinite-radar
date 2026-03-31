@@ -4,11 +4,22 @@ Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOi
 /* =========================
    VIEWER
 ========================= */
+// Grant CesiumJS access to your ion assets
+Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew";
+
 const viewer = new Cesium.Viewer("cesiumContainer", {
-  terrainProvider: Cesium.createWorldTerrain(),
-  baseLayerPicker: true,
-  geocoder: false
+  geocoder: Cesium.IonGeocodeProviderType.GOOGLE,
+    baseLayerPicker: true,
 });
+
+try {
+  const imageryLayer = viewer.imageryLayers.addImageryProvider(
+    await Cesium.IonImageryProvider.fromAssetId(3830183),
+  );
+  await viewer.zoomTo(imageryLayer);
+} catch (error) {
+  console.log(error);
+}
 
 // start camera properly
 viewer.camera.setView({
