@@ -66,16 +66,19 @@ async function loadFlights() {
 
     if (history[id].length > 30) history[id].shift();
 
-    viewer.entities.add({
-      polyline: {
-        positions: history[id].map(p =>
+   if (!aircraft[id].trail) {
+  aircraft[id].trail = viewer.entities.add({
+    polyline: {
+      positions: new Cesium.CallbackProperty(() => {
+        return history[id].map(p =>
           Cesium.Cartesian3.fromDegrees(p[0], p[1])
-        ),
-        width: 2,
-        material: Cesium.Color.CYAN
-      }
-    });
-
+        );
+      }, false),
+      width: 2,
+      material: Cesium.Color.CYAN
+    }
+  });
+}
     // UPDATE COCKPIT IF SELECTED
     if (selected === id) {
       updateCockpit(f);
