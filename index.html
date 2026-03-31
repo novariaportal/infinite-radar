@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -10,31 +9,32 @@
   <link rel="stylesheet" href="style.css">
 </head>
 
-<body>
+<body class="radar-mode">
 
 <div id="cesiumContainer"></div>
 
+<!-- TOP BAR -->
 <div id="topbar">
-  Server:
   <select id="server">
     <option value="expert">Expert</option>
     <option value="training">Training</option>
     <option value="casual">Casual</option>
   </select>
 
-  Mode:
   <select id="mode">
     <option value="radar">Radar</option>
     <option value="ife">IFE</option>
   </select>
 </div>
 
+<!-- RADAR GRID -->
+<div id="radarOverlay"></div>
+
+<!-- COCKPIT -->
 <div id="cockpit">
   <div id="pfd">PFD</div>
   <div id="nd">ND</div>
 </div>
-
-<div id="infoPanel">Click aircraft</div>
 
 <script src="app.js"></script>
 
