@@ -1,38 +1,45 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Airline Map System</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infinite Tracker</title>
 
-  <link href="style.css" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css">
 
-  <!-- Cesium -->
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Cesium.js"></script>
-  <link href="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Widgets/widgets.css" rel="stylesheet"/>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
 </head>
 
 <body>
 
 <div id="cesiumContainer"></div>
 
-<div class="ui">
-  <div class="panel">
-    <h3>Flight System</h3>
-
-    <label>Mode:</label>
-    <select id="mode">
-      <option value="ife">IFE Mode</option>
-      <option value="radar">Radar Mode</option>
+<!-- TOP BAR -->
+<div id="topBar">
+  <div>
+    Server:
+    <select id="server">
+      <option value="expert">Expert</option>
+      <option value="training">Training</option>
+      <option value="casual">Casual</option>
     </select>
-
-    <div id="info">
-      <p><b>Callsign:</b> <span id="callsign">—</span></p>
-      <p><b>Altitude:</b> <span id="alt">—</span></p>
-      <p><b>Speed:</b> <span id="speed">—</span></p>
-      <p><b>Heading:</b> <span id="heading">—</span></p>
-    </div>
   </div>
+
+  <div>
+    Mode:
+    <select id="mode">
+      <option value="ife">IFE</option>
+      <option value="radar">Radar</option>
+    </select>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div>SPD: <span id="spd">--</span></div>
+  <div>ALT: <span id="alt">--</span></div>
+  <div>HDG: <span id="hdg">--</span></div>
 </div>
 
 <script src="app.js"></script>
