@@ -12,13 +12,19 @@ const viewer = new Cesium.Viewer("cesiumContainer", {
     baseLayerPicker: true,
 });
 
-try {
-  const imageryLayer = viewer.imageryLayers.addImageryProvider(
-    await Cesium.IonImageryProvider.fromAssetId(3830183),
-  );
-  await viewer.zoomTo(imageryLayer);
-} catch (error) {
-  console.log(error);
+async function loadImagery() {
+  try {
+    const imageryLayer = viewer.imageryLayers.addImageryProvider(
+      await Cesium.IonImageryProvider.fromAssetId(3830183)
+    );
+
+    await viewer.zoomTo(imageryLayer);
+  } catch (error) {
+    console.log(error);
+  }
+}
+
+loadImagery();
 }
 
 // start camera properly
