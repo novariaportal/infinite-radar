@@ -1,8 +1,13 @@
 
-Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew";
-
 const APP_NAME = "Infinite Tracker";
-const DEFAULT_API_KEY = "tyy8znhl0u5kbbb2vuvdhfetmsil041u"; // replace
+
+// ===== KEYS =====
+// Put your real Infinite Flight API key here:
+const DEFAULT_API_KEY = "tyy8znhl0u5kbbb2vuvdhfetmsil041u";
+
+// Optional: Cesium Ion token (needed for some terrain/assets setups)
+const CESIUM_ION_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew"; // or leave as-is if unused
+
 const API_BASE = "https://api.infiniteflight.com/public/v2";
 const POLL_MS = 5000;
 const TRAIL_LENGTH = 60;
@@ -11,10 +16,10 @@ const state = {
   apiKey: DEFAULT_API_KEY,
   sessionId: "",
   sessionName: "",
-  mode: "ife",
+  mode: "ife", // "ife" | "radar"
   polling: null,
   viewer: null,
-  aircraft: new Map(),
+  aircraft: new Map(), // flightId -> { entity, sampled, trailPositions, last }
   selectedFlightId: null
 };
 
@@ -37,12 +42,14 @@ const els = {
 };
 
 function setStatus(msg, isError = false) {
-  els.status.textContent = msg;
-  els.status.style.color = isError ? "#ff9f9f" : "var(--warn)";
+  if (els.status) {
+    els.status.textContent = msg;
+    els.status.style.color = isError ? "#ff9f9f" : "var(--warn)";
+  }
   console.log("[InfiniteTracker]", msg);
 }
 
-function headers() {
+function getHeaders() {
   return {
     Authorization: `Bearer ${state.apiKey}`,
     "Content-Type": "application/json"
@@ -50,7 +57,7 @@ function headers() {
 }
 
 async function apiGet(path) {
-  const res = await fetch(`${API_BASE}${path}`, { headers: headers() });
+  const res = await fetch(`${API_BASE}${path}`, { headers: getHeaders() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
   if (json.errorCode !== 0) throw new Error(`API errorCode=${json.errorCode}`);
@@ -58,7 +65,16 @@ async function apiGet(path) {
 }
 
 function initCesium() {
-  if (!window.Cesium) throw new Error("Cesium not loaded");
+  if (!window.Cesium) {
+    throw new Error("Cesium not loaded. Check index.html Cesium script/link.");
+  }
+
+  if (
+    CESIUM_ION_TOKEN &&
+    CESIUM_ION_TOKEN !== "PASTE_YOUR_CESIUM_ION_TOKEN_HERE"
+  ) {
+    Cesium.Ion.defaultAccessToken = CESIUM_ION_TOKEN;
+  }
 
   try {
     state.viewer = new Cesium.Viewer("cesiumContainer", {
@@ -73,9 +89,9 @@ function initCesium() {
       infoBox: false,
       terrain: Cesium.Terrain.fromWorldTerrain()
     });
-    setStatus("Cesium initialized");
+    setStatus("Cesium initialized with terrain");
   } catch (e) {
-    console.warn("Terrain failed, fallback:", e);
+    console.warn("Terrain init failed, using fallback globe:", e);
     state.viewer = new Cesium.Viewer("cesiumContainer", {
       animation: false,
       timeline: false,
@@ -87,11 +103,12 @@ function initCesium() {
       selectionIndicator: false,
       infoBox: false
     });
-    setStatus("Cesium initialized (fallback)");
+    setStatus("Cesium initialized (terrain fallback)");
   }
 
   state.viewer.scene.globe.enableLighting = true;
 
+  // Select aircraft on click
   state.viewer.screenSpaceEventHandler.setInputAction((click) => {
     const picked = state.viewer.scene.pick(click.position);
     if (picked?.id?.id && state.aircraft.has(picked.id.id)) {
@@ -104,8 +121,8 @@ function initCesium() {
 async function loadSessions() {
   setStatus("Loading sessions...");
   const sessions = await apiGet("/sessions");
-  els.serverSelect.innerHTML = `<option value="">Select server</option>`;
 
+  els.serverSelect.innerHTML = `<option value="">Select server</option>`;
   sessions.forEach((s) => {
     const opt = document.createElement("option");
     opt.value = s.id;
@@ -121,9 +138,10 @@ function setMode(mode) {
   state.mode = mode;
   document.body.classList.toggle("mode-ife", mode === "ife");
   document.body.classList.toggle("mode-radar", mode === "radar");
-  els.ifeModeBtn.classList.toggle("active", mode === "ife");
-  els.radarModeBtn.classList.toggle("active", mode === "radar");
-  els.topMode.textContent = mode === "ife" ? "IFE Mode" : "Radar Mode";
+
+  if (els.ifeModeBtn) els.ifeModeBtn.classList.toggle("active", mode === "ife");
+  if (els.radarModeBtn) els.radarModeBtn.classList.toggle("active", mode === "radar");
+  if (els.topMode) els.topMode.textContent = mode === "ife" ? "IFE Mode" : "Radar Mode";
 
   for (const rec of state.aircraft.values()) {
     rec.entity.point.pixelSize = mode === "radar" ? 8 : 5;
@@ -137,7 +155,11 @@ function setMode(mode) {
 
 function upsertAircraft(f) {
   const now = Cesium.JulianDate.now();
-  const pos = Cesium.Cartesian3.fromDegrees(f.longitude, f.latitude, (f.altitude || 0) * 0.3048);
+  const pos = Cesium.Cartesian3.fromDegrees(
+    f.longitude,
+    f.latitude,
+    (f.altitude || 0) * 0.3048
+  );
 
   let rec = state.aircraft.get(f.flightId);
 
@@ -171,13 +193,19 @@ function upsertAircraft(f) {
       polyline: {
         positions: [pos],
         width: 2,
-        material: state.mode === "radar"
-          ? Cesium.Color.CYAN.withAlpha(0.8)
-          : Cesium.Color.SKYBLUE.withAlpha(0.55)
+        material:
+          state.mode === "radar"
+            ? Cesium.Color.CYAN.withAlpha(0.8)
+            : Cesium.Color.SKYBLUE.withAlpha(0.55)
       }
     });
 
-    rec = { entity, sampled, trailPositions: [pos], last: f };
+    rec = {
+      entity,
+      sampled,
+      trailPositions: [pos],
+      last: f
+    };
     state.aircraft.set(f.flightId, rec);
   } else {
     rec.sampled.addSample(now, pos);
@@ -221,14 +249,14 @@ async function pollFlights() {
 
   try {
     const flights = await apiGet(`/sessions/${state.sessionId}/flights`);
-    const active = new Set();
+    const activeIds = new Set();
 
     flights.forEach((f) => {
-      active.add(f.flightId);
+      activeIds.add(f.flightId);
       upsertAircraft(f);
     });
 
-    removeMissingAircraft(active);
+    removeMissingAircraft(activeIds);
 
     if (!state.selectedFlightId && flights.length > 0) {
       state.selectedFlightId = flights[0].flightId;
@@ -257,8 +285,12 @@ function clearAircraft() {
 }
 
 function connect() {
-  if (!state.apiKey || state.apiKey === "tyy8znhl0u5kbbb2vuvdhfetmsil041u") {
-    setStatus("Set your real API key in app.js first", true);
+  // Always use hardcoded key
+  state.apiKey = (DEFAULT_API_KEY || "").trim();
+
+  // Only check empty key (no placeholder string checks)
+  if (!state.apiKey) {
+    setStatus("Missing Infinite Flight API key in app.js", true);
     return;
   }
 
@@ -272,26 +304,32 @@ function connect() {
   }
 
   clearAircraft();
-  els.topServer.textContent = state.sessionName || "Unknown server";
+  if (els.topServer) els.topServer.textContent = state.sessionName || "Unknown server";
+
   setStatus("Connected. Starting live tracking...");
   startPolling();
 }
 
-els.connectBtn.addEventListener("click", connect);
-els.refreshBtn.addEventListener("click", async () => {
+// Events
+els.connectBtn?.addEventListener("click", connect);
+
+els.refreshBtn?.addEventListener("click", async () => {
   try {
     await loadSessions();
   } catch (e) {
     setStatus(`Refresh failed: ${e.message}`, true);
   }
 });
-els.ifeModeBtn.addEventListener("click", () => setMode("ife"));
-els.radarModeBtn.addEventListener("click", () => setMode("radar"));
-els.togglePanelBtn.addEventListener("click", () => {
+
+els.ifeModeBtn?.addEventListener("click", () => setMode("ife"));
+els.radarModeBtn?.addEventListener("click", () => setMode("radar"));
+
+els.togglePanelBtn?.addEventListener("click", () => {
   const hidden = els.controlShell.classList.toggle("hidden");
   els.togglePanelBtn.textContent = hidden ? "Show Panel" : "Hide Panel";
 });
 
+// Bootstrap
 (async function bootstrap() {
   document.title = APP_NAME;
   if (els.title) els.title.textContent = APP_NAME;
