@@ -116,6 +116,21 @@ function preloadPlaneIcon() {
 }
 
 function initCesium() {
+const labelLayer = new Cesium.UrlTemplateImageryProvider({
+  url: "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png",
+  subdomains: ["a", "b", "c", "d"],
+  credit: "©OpenStreetMap ©CARTO"
+});
+state.viewer.imageryLayers.addImageryProvider(labelLayer);
+
+// Optional boundaries overlay
+const boundaryLayer = new Cesium.UrlTemplateImageryProvider({
+  url: "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png",
+  subdomains: ["a", "b", "c", "d"],
+  credit: "©OpenStreetMap ©CARTO"
+});
+// For Carto, labels layer already includes boundary styling in many zoom levels.
+// If you want stronger boundaries, use a dedicated boundary tileset provider.
   if (!window.Cesium) throw new Error("Cesium not loaded");
 
   if (CESIUM_ION_TOKEN && CESIUM_ION_TOKEN !== "PASTE_YOUR_CESIUM_ION_TOKEN_HERE") {
