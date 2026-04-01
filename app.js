@@ -7,7 +7,7 @@ const CESIUM_ION_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4N
 const API_BASE = "https://api.infiniteflight.com/public/v2";
 const POLL_MS = 5000;
 const TRAIL_LENGTH = 80;
-const PLANE_ICON = "./plane.png";
+const PLANE_ICON = ""https://infinite-tracker.tech/plane.png";";
 
 const state = {
   apiKey: DEFAULT_API_KEY,
