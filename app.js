@@ -3,11 +3,16 @@ const APP_NAME = "Infinite Tracker";
 
 const DEFAULT_API_KEY = "tyy8znhl0u5kbbb2vuvdhfetmsil041u";
 const CESIUM_ION_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew";
+const APP_NAME = "Infinite Tracker";
 const API_BASE = "https://api.infiniteflight.com/public/v2";
 
 const POLL_MS = 5000;
 const TRAIL_LENGTH = 80;
 const PLANE_ICON = "https://infinite-tracker.tech/plane.png";
+
+// CARTO transparent overlays
+const LABELS_URL = "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png";
+const BOUNDARIES_URL = "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png"; // labels contains admin boundaries on many zoom levels
 
 const state = {
   apiKey: DEFAULT_API_KEY,
@@ -19,7 +24,13 @@ const state = {
   aircraft: new Map(),
   selectedFlightId: null,
   followSelected: false,
-  planeIconReady: false
+  planeIconReady: false,
+
+  // overlays
+  labelsEnabled: true,
+  boundariesEnabled: true,
+  labelsLayer: null,
+  boundariesLayer: null
 };
 
 const els = {
@@ -34,6 +45,7 @@ const els = {
   togglePanelBtn: document.getElementById("togglePanelBtn"),
   controlShell: document.getElementById("controlShell"),
   followBtn: document.getElementById("followBtn"),
+  title: document.querySelector(".brand h1"),
 
   drawer: document.getElementById("flightDrawer"),
   selectedStrip: document.getElementById("selectedStrip"),
@@ -72,7 +84,11 @@ const els = {
   gcN1R: document.getElementById("gcN1R"),
   gcEgtL: document.getElementById("gcEgtL"),
   gcEgtR: document.getElementById("gcEgtR"),
-  gcFpln: document.getElementById("gcFpln")
+  gcFpln: document.getElementById("gcFpln"),
+
+  // injected buttons
+  labelsToggleBtn: null,
+  boundariesToggleBtn: null
 };
 
 function setStatus(msg, isError = false) {
@@ -98,39 +114,110 @@ async function apiGet(path) {
   return json.result;
 }
 
+function ensureTopbarButtons() {
+  const topActions = document.querySelector(".top-actions");
+  if (!topActions) return;
+
+  if (!document.getElementById("labelsToggleBtn")) {
+    const btn = document.createElement("button");
+    btn.id = "labelsToggleBtn";
+    btn.textContent = "Map Labels: ON";
+    topActions.prepend(btn);
+    els.labelsToggleBtn = btn;
+  } else {
+    els.labelsToggleBtn = document.getElementById("labelsToggleBtn");
+  }
+
+  if (!document.getElementById("boundariesToggleBtn")) {
+    const btn = document.createElement("button");
+    btn.id = "boundariesToggleBtn";
+    btn.textContent = "Boundaries: ON";
+    topActions.prepend(btn);
+    els.boundariesToggleBtn = btn;
+  } else {
+    els.boundariesToggleBtn = document.getElementById("boundariesToggleBtn");
+  }
+}
+
+function updateOverlayButtonLabels() {
+  if (els.labelsToggleBtn) {
+    els.labelsToggleBtn.textContent = `Map Labels: ${state.labelsEnabled ? "ON" : "OFF"}`;
+    els.labelsToggleBtn.classList.toggle("active", state.labelsEnabled);
+  }
+  if (els.boundariesToggleBtn) {
+    els.boundariesToggleBtn.textContent = `Boundaries: ${state.boundariesEnabled ? "ON" : "OFF"}`;
+    els.boundariesToggleBtn.classList.toggle("active", state.boundariesEnabled);
+  }
+}
+
+function setLayerVisibility(layer, visible) {
+  if (!layer) return;
+  layer.show = !!visible;
+  layer.alpha = visible ? 1.0 : 0.0;
+}
+
+function addOverlayLayers() {
+  try {
+    const labelsProvider = new Cesium.UrlTemplateImageryProvider({
+      url: LABELS_URL,
+      subdomains: ["a", "b", "c", "d"],
+      credit: "©OpenStreetMap ©CARTO"
+    });
+
+    const boundariesProvider = new Cesium.UrlTemplateImageryProvider({
+      url: BOUNDARIES_URL,
+      subdomains: ["a", "b", "c", "d"],
+      credit: "©OpenStreetMap ©CARTO"
+    });
+
+    state.labelsLayer = state.viewer.imageryLayers.addImageryProvider(labelsProvider);
+    state.boundariesLayer = state.viewer.imageryLayers.addImageryProvider(boundariesProvider);
+
+    // tune overlay feel
+    state.labelsLayer.brightness = 1.05;
+    state.labelsLayer.contrast = 1.1;
+    state.labelsLayer.gamma = 0.95;
+
+    state.boundariesLayer.brightness = 1.0;
+    state.boundariesLayer.contrast = 1.2;
+    state.boundariesLayer.gamma = 1.0;
+
+    setLayerVisibility(state.labelsLayer, state.labelsEnabled);
+    setLayerVisibility(state.boundariesLayer, state.boundariesEnabled);
+  } catch (e) {
+    console.warn("Overlay layer init failed:", e);
+  }
+}
+
+function toggleLabels() {
+  state.labelsEnabled = !state.labelsEnabled;
+  setLayerVisibility(state.labelsLayer, state.labelsEnabled);
+  updateOverlayButtonLabels();
+}
+
+function toggleBoundaries() {
+  state.boundariesEnabled = !state.boundariesEnabled;
+  setLayerVisibility(state.boundariesLayer, state.boundariesEnabled);
+  updateOverlayButtonLabels();
+}
+
 function preloadPlaneIcon() {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       state.planeIconReady = true;
-      console.log("[plane] icon loaded:", PLANE_ICON);
       resolve(true);
     };
     img.onerror = () => {
       state.planeIconReady = false;
-      console.error("[plane] failed to load:", PLANE_ICON);
+      console.error("plane icon failed:", PLANE_ICON);
       resolve(false);
     };
-    img.src = PLANE_ICON + `?v=${Date.now()}`; // cache-bust
+    img.src = `${PLANE_ICON}?v=${Date.now()}`;
   });
 }
 
 function initCesium() {
-const labelLayer = new Cesium.UrlTemplateImageryProvider({
-  url: "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png",
-  subdomains: ["a", "b", "c", "d"],
-  credit: "©OpenStreetMap ©CARTO"
-});
-state.viewer.imageryLayers.addImageryProvider(labelLayer);
-
-// Optional boundaries overlay
-const boundaryLayer = new Cesium.UrlTemplateImageryProvider({
-  url: "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png",
-  subdomains: ["a", "b", "c", "d"],
-  credit: "©OpenStreetMap ©CARTO"
-});
-// For Carto, labels layer already includes boundary styling in many zoom levels.
-// If you want stronger boundaries, use a dedicated boundary tileset provider.
   if (!window.Cesium) throw new Error("Cesium not loaded");
 
   if (CESIUM_ION_TOKEN && CESIUM_ION_TOKEN !== "PASTE_YOUR_CESIUM_ION_TOKEN_HERE") {
@@ -167,6 +254,8 @@ const boundaryLayer = new Cesium.UrlTemplateImageryProvider({
   state.viewer.scene.globe.enableLighting = true;
   state.viewer.scene.globe.depthTestAgainstTerrain = false;
 
+  addOverlayLayers();
+
   state.viewer.screenSpaceEventHandler.setInputAction((click) => {
     const picked = state.viewer.scene.pick(click.position);
     if (picked?.id?.id && state.aircraft.has(picked.id.id)) selectFlight(picked.id.id);
@@ -199,10 +288,9 @@ function setMode(mode) {
 }
 
 function createAircraftEntity(f, pos, sampled) {
-  const entity = state.viewer.entities.add({
+  return state.viewer.entities.add({
     id: f.flightId,
     position: sampled,
-
     billboard: {
       image: PLANE_ICON,
       show: !!state.planeIconReady,
@@ -215,8 +303,6 @@ function createAircraftEntity(f, pos, sampled) {
       horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
       disableDepthTestDistance: Number.POSITIVE_INFINITY
     },
-
-    // fallback marker if plane.png doesn't render
     point: {
       show: !state.planeIconReady,
       pixelSize: 6,
@@ -225,15 +311,12 @@ function createAircraftEntity(f, pos, sampled) {
       outlineWidth: 1,
       disableDepthTestDistance: Number.POSITIVE_INFINITY
     },
-
     polyline: {
       positions: [pos],
       width: 2,
       material: Cesium.Color.fromCssColorString("#7ec8ff").withAlpha(0.35)
     }
   });
-
-  return entity;
 }
 
 function upsertAircraft(f) {
@@ -256,7 +339,6 @@ function upsertAircraft(f) {
     rec.sampled.addSample(now, pos);
     rec.trailPositions.push(pos);
     if (rec.trailPositions.length > TRAIL_LENGTH) rec.trailPositions.shift();
-
     rec.entity.polyline.positions = rec.trailPositions;
     rec.entity.billboard.rotation = Cesium.Math.toRadians((f.heading || 0) - 90);
     rec.last = f;
@@ -314,18 +396,18 @@ function updateGlassCockpit(f) {
   const hdg = Math.round(f.heading || 0);
   const vs = Math.round(f.verticalSpeed || 0);
 
-  els.gcSpeedTape.textContent = `GS ${gs}`;
-  els.gcAltTape.textContent = `ALT ${alt}`;
-  els.gcNDR.textContent = `HDG ${String(hdg).padStart(3, "0")}`;
+  if (els.gcSpeedTape) els.gcSpeedTape.textContent = `GS ${gs}`;
+  if (els.gcAltTape) els.gcAltTape.textContent = `ALT ${alt}`;
+  if (els.gcNDR) els.gcNDR.textContent = `HDG ${String(hdg).padStart(3, "0")}`;
   els.gcNeedle.style.transform = `translate(-50%, -100%) rotate(${hdg}deg)`;
 
   const n1 = Math.max(25, Math.min(105, gs / 5 + 20));
-  els.gcN1L.textContent = n1.toFixed(1);
-  els.gcN1R.textContent = n1.toFixed(1);
+  if (els.gcN1L) els.gcN1L.textContent = n1.toFixed(1);
+  if (els.gcN1R) els.gcN1R.textContent = n1.toFixed(1);
 
   const egtPct = Math.max(20, Math.min(95, Math.abs(vs) / 40 + 35));
-  els.gcEgtL.style.height = `${egtPct}%`;
-  els.gcEgtR.style.height = `${egtPct}%`;
+  if (els.gcEgtL) els.gcEgtL.style.height = `${egtPct}%`;
+  if (els.gcEgtR) els.gcEgtR.style.height = `${egtPct}%`;
 
   if (els.gcFpln) {
     els.gcFpln.innerHTML = `
@@ -427,7 +509,6 @@ function connect() {
   state.sessionId = els.serverSelect.value;
   const selected = els.serverSelect.options[els.serverSelect.selectedIndex];
   state.sessionName = selected?.dataset?.serverName || selected?.textContent || "";
-
   if (!state.sessionId) return setStatus("Please select a server", true);
 
   clearAircraft();
@@ -456,8 +537,8 @@ function setupEvents() {
   els.radarModeBtn?.addEventListener("click", () => setMode("radar"));
 
   els.togglePanelBtn?.addEventListener("click", () => {
-    const hidden = els.controlShell.classList.toggle("hidden");
-    els.togglePanelBtn.textContent = hidden ? "Show Panel" : "Hide Panel";
+    const hidden = els.controlShell?.classList.toggle("hidden");
+    if (els.togglePanelBtn) els.togglePanelBtn.textContent = hidden ? "Show Panel" : "Hide Panel";
   });
 
   els.followBtn?.addEventListener("click", () => {
@@ -466,15 +547,22 @@ function setupEvents() {
     if (!state.followSelected) state.viewer.trackedEntity = undefined;
     else updateFollowCamera();
   });
+
+  els.labelsToggleBtn?.addEventListener("click", toggleLabels);
+  els.boundariesToggleBtn?.addEventListener("click", toggleBoundaries);
 }
 
 (async function bootstrap() {
   document.title = APP_NAME;
+  if (els.title) els.title.textContent = APP_NAME;
+
   try {
+    ensureTopbarButtons();
     await preloadPlaneIcon();
     initCesium();
-    setupEvents();
     setupTabs();
+    updateOverlayButtonLabels();
+    setupEvents();
     setMode("ife");
     await loadSessions();
     setStatus("Ready. Select server and connect.");
