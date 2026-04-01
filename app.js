@@ -1,3 +1,4 @@
+
 const APP_NAME = "Infinite Tracker";
 
 const DEFAULT_API_KEY = "tyy8znhl0u5kbbb2vuvdhfetmsil041u";
@@ -7,18 +8,6 @@ const API_BASE = "https://api.infiniteflight.com/public/v2";
 const POLL_MS = 5000;
 const TRAIL_LENGTH = 100;
 const PLANE_ICON = "https://infinite-tracker.tech/plane.png";
-
-const OVERLAY_SOURCES = {
-  labels: [
-    "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png",
-    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-  ],
-  boundaries: [
-    "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png",
-    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-  ],
-  subdomains: ["a", "b", "c", "d"]
-};
 
 const state = {
   apiKey: DEFAULT_API_KEY,
@@ -33,8 +22,9 @@ const state = {
 
   labelsEnabled: true,
   boundariesEnabled: true,
-  labelsLayer: null,
-  boundariesLayer: null
+
+  // current imagery handles
+  currentBaseLayer: null
 };
 
 const els = {
@@ -117,7 +107,7 @@ async function apiGet(path) {
   return json.result;
 }
 
-function ensureOverlayButtons() {
+function ensureStyleButtons() {
   const topActions = document.querySelector(".top-actions");
   if (!topActions) return;
 
@@ -134,10 +124,10 @@ function ensureOverlayButtons() {
 
   els.labelsToggleBtn = document.getElementById("labelsToggleBtn");
   els.boundariesToggleBtn = document.getElementById("boundariesToggleBtn");
-  updateOverlayButtonLabels();
+  updateStyleButtonLabels();
 }
 
-function updateOverlayButtonLabels() {
+function updateStyleButtonLabels() {
   if (els.labelsToggleBtn) {
     els.labelsToggleBtn.textContent = `Map Labels: ${state.labelsEnabled ? "ON" : "OFF"}`;
     els.labelsToggleBtn.classList.toggle("active", state.labelsEnabled);
@@ -148,67 +138,49 @@ function updateOverlayButtonLabels() {
   }
 }
 
-function setLayerVisible(layer, visible) {
-  if (!layer) return;
-  layer.show = !!visible;
-  layer.alpha = visible ? 1 : 0;
+async function applyScreenshotLikeGlobeStyle() {
+  // style from your screenshot: satellite + labels
+  const style = state.labelsEnabled
+    ? Cesium.IonWorldImageryStyle.AERIAL_WITH_LABELS
+    : Cesium.IonWorldImageryStyle.AERIAL;
+
+  const baseLayer = await Cesium.ImageryLayer.fromProviderAsync(
+    Cesium.createWorldImageryAsync({ style })
+  );
+
+  state.viewer.imageryLayers.removeAll();
+  state.viewer.imageryLayers.add(baseLayer);
+  state.currentBaseLayer = baseLayer;
+
+  // boundary-ish visual tuning
+  state.viewer.scene.globe.showGroundAtmosphere = !!state.boundariesEnabled;
+  state.viewer.scene.globe.enableLighting = true;
+  state.viewer.scene.skyAtmosphere.show = true;
+  state.viewer.scene.fog.enabled = true;
 }
 
-function addOverlayWithFallback(type) {
-  const urls = OVERLAY_SOURCES[type];
-  if (!urls || !state.viewer) return null;
-
-  for (const url of urls) {
-    try {
-      const provider = new Cesium.UrlTemplateImageryProvider({
-        url,
-        subdomains: OVERLAY_SOURCES.subdomains,
-        credit: "Map data"
-      });
-      const layer = state.viewer.imageryLayers.addImageryProvider(provider);
-      return { layer, url };
-    } catch (e) {
-      console.warn(`Overlay ${type} failed on ${url}`, e);
-    }
-  }
-  return null;
-}
-
-function addOverlayLayers() {
-  const labels = addOverlayWithFallback("labels");
-  if (labels?.layer) {
-    state.labelsLayer = labels.layer;
-    state.labelsLayer.brightness = 1.05;
-    state.labelsLayer.contrast = 1.1;
-    setLayerVisible(state.labelsLayer, state.labelsEnabled);
-    console.log("Labels source:", labels.url);
-  }
-
-  const boundaries = addOverlayWithFallback("boundaries");
-  if (boundaries?.layer) {
-    state.boundariesLayer = boundaries.layer;
-    state.boundariesLayer.brightness = 1.0;
-    state.boundariesLayer.contrast = 1.2;
-    setLayerVisible(state.boundariesLayer, state.boundariesEnabled);
-    console.log("Boundaries source:", boundaries.url);
-  }
-}
-
-function toggleLabels() {
+async function toggleLabels() {
   state.labelsEnabled = !state.labelsEnabled;
-  setLayerVisible(state.labelsLayer, state.labelsEnabled);
-  updateOverlayButtonLabels();
+  updateStyleButtonLabels();
+  try {
+    await applyScreenshotLikeGlobeStyle();
+  } catch (e) {
+    setStatus(`Label toggle failed: ${e.message}`, true);
+  }
 }
 
-function toggleBoundaries() {
+async function toggleBoundaries() {
   state.boundariesEnabled = !state.boundariesEnabled;
-  setLayerVisible(state.boundariesLayer, state.boundariesEnabled);
-  updateOverlayButtonLabels();
+  updateStyleButtonLabels();
+  try {
+    await applyScreenshotLikeGlobeStyle();
+  } catch (e) {
+    setStatus(`Boundary toggle failed: ${e.message}`, true);
+  }
 }
 
 function initCesium() {
   if (!window.Cesium) throw new Error("Cesium not loaded");
-
   if (CESIUM_ION_TOKEN && CESIUM_ION_TOKEN !== "PASTE_YOUR_CESIUM_ION_TOKEN_HERE") {
     Cesium.Ion.defaultAccessToken = CESIUM_ION_TOKEN;
   }
@@ -218,7 +190,7 @@ function initCesium() {
       animation: false,
       timeline: false,
       sceneModePicker: false,
-      baseLayerPicker: true,
+      baseLayerPicker: false,
       geocoder: false,
       homeButton: true,
       navigationHelpButton: false,
@@ -232,7 +204,7 @@ function initCesium() {
       animation: false,
       timeline: false,
       sceneModePicker: false,
-      baseLayerPicker: true,
+      baseLayerPicker: false,
       geocoder: false,
       homeButton: true,
       navigationHelpButton: false,
@@ -241,10 +213,7 @@ function initCesium() {
     });
   }
 
-  state.viewer.scene.globe.enableLighting = true;
   state.viewer.scene.globe.depthTestAgainstTerrain = false;
-
-  addOverlayLayers();
 
   state.viewer.screenSpaceEventHandler.setInputAction((click) => {
     const picked = state.viewer.scene.pick(click.position);
@@ -281,11 +250,9 @@ function setMode(mode) {
 }
 
 function createAircraftEntity(f, pos, sampled) {
-  const entity = state.viewer.entities.add({
+  return state.viewer.entities.add({
     id: f.flightId,
     position: sampled,
-
-    // FORCE image icon visible
     billboard: {
       image: PLANE_ICON,
       show: true,
@@ -298,22 +265,15 @@ function createAircraftEntity(f, pos, sampled) {
       horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
       disableDepthTestDistance: Number.POSITIVE_INFINITY
     },
-
-    // keep hidden unless you decide to debug fallback
     point: {
-      show: false,
-      pixelSize: 6,
-      color: Cesium.Color.WHITE
+      show: false
     },
-
     polyline: {
       positions: [pos],
       width: 2,
       material: Cesium.Color.fromCssColorString("#7ec8ff").withAlpha(0.3)
     }
   });
-
-  return entity;
 }
 
 function upsertAircraft(f) {
@@ -357,7 +317,7 @@ function updateSelectedStyles() {
   for (const [id, rec] of state.aircraft.entries()) {
     const selected = id === state.selectedFlightId;
     rec.entity.billboard.scale = selected ? 1.25 : 1.0;
-    rec.entity.billboard.color = Cesium.Color.WHITE; // debug stable
+    rec.entity.billboard.color = Cesium.Color.WHITE;
     rec.entity.polyline.width = selected ? 3 : 2;
     rec.entity.polyline.material = selected
       ? Cesium.Color.fromCssColorString("#34f5c5").withAlpha(0.85)
@@ -427,6 +387,7 @@ function updateInfoPanels() {
   }
 
   const f = rec.last;
+
   if (els.fiCallsign) els.fiCallsign.textContent = f.callsign || "-";
   if (els.fiUser) els.fiUser.textContent = f.username || "-";
   if (els.fiAlt) els.fiAlt.textContent = `${Math.round(f.altitude || 0)} ft`;
@@ -558,13 +519,29 @@ function setupEvents() {
   if (els.title) els.title.textContent = APP_NAME;
 
   try {
-    initCesium(); // globe first
-    setStatus("Globe ready. Loading data...");
+    // 1) Globe first
+    initCesium();
+    setStatus("Globe ready. Applying map style...");
 
-    ensureOverlayButtons();
-    updateOverlayButtonLabels();
+    // 2) map style from screenshot
+    await applyScreenshotLikeGlobeStyle();
+
+    // 3) immediate UI
+    ensureStyleButtons();
+    updateStyleButtonLabels();
     setupTabs();
     setupEvents();
     setMode("ife");
 
-   *
+    if (els.selectedStrip) els.selectedStrip.style.display = "none";
+    if (els.drawer) els.drawer.style.display = "none";
+
+    // 4) background loads
+    loadSessions()
+      .then(() => setStatus("Ready. Select server and connect."))
+      .catch((e) => setStatus(`Session load failed: ${e.message}`, true));
+  } catch (e) {
+    console.error(e);
+    setStatus(`Startup error: ${e.message}`, true);
+  }
+})();
