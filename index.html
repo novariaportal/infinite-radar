@@ -4,46 +4,88 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Infinite Tracker</title>
-  <link rel="stylesheet" href="./style.css" />
+
+  <!-- Cesium -->
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Cesium.js"></script>
   <link
     href="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Widgets/widgets.css"
     rel="stylesheet"
   />
+
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body class="mode-ife">
-  <div id="ui">
-    <div class="panel">
-      <h1>Infinite Flight EX3 Tracker</h1>
-      <div class="row">
-        <label>API Key</label>
+  <div id="app">
+    <!-- Home / setup panel -->
+    <aside class="control-shell glass" id="controlShell">
+      <div class="brand">
+        <div class="brand-badge">✈</div>
+        <div>
+          <h1>Infinite Tracker</h1>
+          <p>Live flight visualization</p>
+        </div>
+      </div>
+
+      <div class="section">
+        <label for="apiKeyInput">API Key</label>
         <input id="apiKeyInput" type="password" placeholder="Enter Infinite Flight API key" />
       </div>
 
-      <div class="row">
-        <label>Server</label>
+      <div class="section">
+        <label for="serverSelect">Server</label>
         <select id="serverSelect">
           <option value="">Select server</option>
         </select>
       </div>
 
-      <div class="row actions">
-        <button id="connectBtn">Connect</button>
-        <button id="modeBtn">Switch to Radar</button>
+      <div class="section">
+        <label>Display Mode</label>
+        <div class="mode-grid">
+          <button id="ifeModeBtn" class="mode-card active">
+            <span class="mode-title">IFE Mode</span>
+            <span class="mode-sub">Cinematic passenger view</span>
+          </button>
+          <button id="radarModeBtn" class="mode-card">
+            <span class="mode-title">Radar Mode</span>
+            <span class="mode-sub">Technical ATC-style view</span>
+          </button>
+        </div>
       </div>
 
-      <div id="status">Idle</div>
-    </div>
+      <div class="action-row">
+        <button id="connectBtn" class="primary">Connect</button>
+        <button id="refreshBtn">Refresh Sessions</button>
+      </div>
 
-    <div class="hud" id="hud">
-      <div>Callsign: <span id="hudCallsign">-</span></div>
-      <div>ALT: <span id="hudAlt">-</span> ft</div>
-      <div>SPD: <span id="hudSpd">-</span> kts</div>
-      <div>HDG: <span id="hudHdg">-</span>°</div>
-    </div>
+      <div id="status" class="status">Initializing…</div>
+    </aside>
+
+    <!-- Top info bar -->
+    <header class="topbar glass">
+      <div>
+        <strong id="topMode">IFE Mode</strong>
+        <span class="muted">•</span>
+        <span id="topServer">No server selected</span>
+      </div>
+      <div class="top-actions">
+        <button id="togglePanelBtn">Hide Panel</button>
+      </div>
+    </header>
+
+    <!-- HUD -->
+    <section class="hud glass">
+      <h3>Cockpit HUD</h3>
+      <div class="hud-grid">
+        <div><span>Callsign</span><strong id="hudCallsign">-</strong></div>
+        <div><span>ALT</span><strong id="hudAlt">- ft</strong></div>
+        <div><span>SPD</span><strong id="hudSpd">- kts</strong></div>
+        <div><span>HDG</span><strong id="hudHdg">-°</strong></div>
+      </div>
+    </section>
+
+    <!-- Cesium -->
+    <main id="cesiumContainer"></main>
   </div>
-
-  <div id="cesiumContainer"></div>
 
   <script type="module" src="./app.js"></script>
 </body>
