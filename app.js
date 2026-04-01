@@ -1,15 +1,13 @@
-
-
 const APP_NAME = "Infinite Tracker";
 
 // ===== KEYS =====
 const DEFAULT_API_KEY = "tyy8znhl0u5kbbb2vuvdhfetmsil041u";
-const CESIUM_ION_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew"; // optional but recommended
+const CESIUM_ION_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew"; // optional
 
 const API_BASE = "https://api.infiniteflight.com/public/v2";
 const POLL_MS = 5000;
 const TRAIL_LENGTH = 80;
-const PLANE_ICON = "./plane.png"; // provided by you
+const PLANE_ICON = "./plane.png";
 
 const state = {
   apiKey: DEFAULT_API_KEY,
@@ -24,7 +22,6 @@ const state = {
 };
 
 const els = {
-  // existing
   serverSelect: document.getElementById("serverSelect"),
   connectBtn: document.getElementById("connectBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
@@ -41,7 +38,6 @@ const els = {
   hudHdg: document.getElementById("hudHdg"),
   title: document.querySelector(".brand h1"),
 
-  // NEW optional UI ids (add to index.html if not there yet)
   selectedStrip: document.getElementById("selectedStrip"),
   stripCallsign: document.getElementById("stripCallsign"),
   stripType: document.getElementById("stripType"),
@@ -132,7 +128,6 @@ function initCesium() {
   state.viewer.scene.globe.enableLighting = true;
   state.viewer.scene.globe.depthTestAgainstTerrain = false;
 
-  // click select
   state.viewer.screenSpaceEventHandler.setInputAction((click) => {
     const picked = state.viewer.scene.pick(click.position);
     if (picked?.id?.id && state.aircraft.has(picked.id.id)) {
@@ -169,18 +164,13 @@ function setMode(mode) {
 
   for (const [flightId, rec] of state.aircraft.entries()) {
     const isSelected = flightId === state.selectedFlightId;
-    const color = isSelected
+    rec.entity.billboard.color = isSelected
       ? Cesium.Color.fromCssColorString("#34f5c5")
-      : (mode === "radar"
-          ? Cesium.Color.fromCssColorString("#56b9ff")
-          : Cesium.Color.WHITE);
+      : Cesium.Color.WHITE;
 
-    rec.entity.billboard.color = color;
     rec.entity.polyline.material = isSelected
       ? Cesium.Color.fromCssColorString("#34f5c5").withAlpha(0.9)
-      : (mode === "radar"
-          ? Cesium.Color.fromCssColorString("#56b9ff").withAlpha(0.55)
-          : Cesium.Color.fromCssColorString("#7ec8ff").withAlpha(0.45));
+      : Cesium.Color.fromCssColorString("#7ec8ff").withAlpha(0.35);
   }
 }
 
@@ -190,40 +180,34 @@ function createAircraftEntity(f, pos, sampled) {
     position: sampled,
     billboard: {
       image: PLANE_ICON,
-      width: 24,
-      height: 24,
-      color: state.mode === "radar"
-        ? Cesium.Color.fromCssColorString("#56b9ff")
-        : Cesium.Color.WHITE,
+      width: 20,
+      height: 20,
+      color: Cesium.Color.WHITE,
       rotation: Cesium.Math.toRadians((f.heading || 0) - 90),
       alignedAxis: Cesium.Cartesian3.UNIT_Z,
       verticalOrigin: Cesium.VerticalOrigin.CENTER,
       horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-      scaleByDistance: new Cesium.NearFarScalar(1.0e5, 1.0, 1.0e7, 0.55)
+      scaleByDistance: new Cesium.NearFarScalar(1.0e5, 1.0, 1.0e7, 0.6)
     },
     label: {
-      text: f.callsign || "UNKN",
-      font: "12px Inter, sans-serif",
-      fillColor: Cesium.Color.WHITE,
-      outlineColor: Cesium.Color.BLACK,
-      outlineWidth: 2,
-      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      pixelOffset: new Cesium.Cartesian2(0, -20),
-      scale: 0.85,
-      showBackground: true,
-      backgroundColor: Cesium.Color.fromCssColorString("#061226").withAlpha(0.65)
+      text: "",
+      show: false
     },
     polyline: {
       positions: [pos],
       width: 2,
-      material: Cesium.Color.fromCssColorString("#7ec8ff").withAlpha(0.45)
+      material: Cesium.Color.fromCssColorString("#7ec8ff").withAlpha(0.35)
     }
   });
 }
 
 function upsertAircraft(f) {
   const now = Cesium.JulianDate.now();
-  const pos = Cesium.Cartesian3.fromDegrees(f.longitude, f.latitude, (f.altitude || 0) * 0.3048);
+  const pos = Cesium.Cartesian3.fromDegrees(
+    f.longitude,
+    f.latitude,
+    (f.altitude || 0) * 0.3048
+  );
 
   let rec = state.aircraft.get(f.flightId);
 
@@ -236,7 +220,6 @@ function upsertAircraft(f) {
     sampled.addSample(now, pos);
 
     const entity = createAircraftEntity(f, pos, sampled);
-
     rec = { entity, sampled, trailPositions: [pos], last: f };
     state.aircraft.set(f.flightId, rec);
   } else {
@@ -245,7 +228,6 @@ function upsertAircraft(f) {
     if (rec.trailPositions.length > TRAIL_LENGTH) rec.trailPositions.shift();
 
     rec.entity.polyline.positions = rec.trailPositions;
-    rec.entity.label.text = f.callsign || "UNKN";
     rec.entity.billboard.rotation = Cesium.Math.toRadians((f.heading || 0) - 90);
     rec.last = f;
   }
@@ -263,12 +245,19 @@ function removeMissingAircraft(activeIds) {
 
 function selectFlight(flightId) {
   state.selectedFlightId = flightId;
+
+  if (els.drawer) els.drawer.style.display = "block";
+  if (els.selectedStrip) els.selectedStrip.style.display = "flex";
+
   updateSelectedStyles();
   updateInfoPanels();
 
   const rec = state.aircraft.get(flightId);
   if (rec) {
-    state.viewer.flyTo(rec.entity, { duration: 1.1, offset: new Cesium.HeadingPitchRange(0, -0.35, 2200000) });
+    state.viewer.flyTo(rec.entity, {
+      duration: 1.0,
+      offset: new Cesium.HeadingPitchRange(0, -0.35, 2200000)
+    });
   }
 }
 
@@ -278,7 +267,7 @@ function updateSelectedStyles() {
     rec.entity.billboard.scale = selected ? 1.25 : 1.0;
     rec.entity.polyline.width = selected ? 3 : 2;
   }
-  setMode(state.mode); // re-apply colors based on mode + selected
+  setMode(state.mode);
 }
 
 function updateHud() {
@@ -305,9 +294,7 @@ function updateInfoPanels() {
   }
 
   const f = rec.last;
-  if (els.selectedStrip) els.selectedStrip.style.display = "flex";
 
-  // bottom strip
   els.stripCallsign && (els.stripCallsign.textContent = f.callsign || "Unknown");
   els.stripType && (els.stripType.textContent = "Infinite Flight Aircraft");
   els.stripGs && (els.stripGs.textContent = `${Math.round(f.speed || 0)} kts`);
@@ -315,7 +302,6 @@ function updateInfoPanels() {
   els.stripVs && (els.stripVs.textContent = `${Math.round(f.verticalSpeed || 0)} fpm`);
   els.stripPilot && (els.stripPilot.textContent = f.username || "Anonymous");
 
-  // right drawer - flight info
   els.fiCallsign && (els.fiCallsign.textContent = f.callsign || "-");
   els.fiUser && (els.fiUser.textContent = f.username || "-");
   els.fiAlt && (els.fiAlt.textContent = `${Math.round(f.altitude || 0)} ft`);
@@ -332,7 +318,6 @@ function updateFollowCamera() {
   if (!state.followSelected || !state.selectedFlightId) return;
   const rec = state.aircraft.get(state.selectedFlightId);
   if (!rec) return;
-
   state.viewer.trackedEntity = rec.entity;
 }
 
@@ -350,11 +335,14 @@ async function pollFlights() {
 
     removeMissingAircraft(active);
 
-    if (!state.selectedFlightId && flights.length > 0) {
-      selectFlight(flights[0].flightId);
-    } else {
+    // IMPORTANT: do NOT auto-select first flight
+    if (state.selectedFlightId) {
       updateInfoPanels();
       updateSelectedStyles();
+    } else {
+      if (els.selectedStrip) els.selectedStrip.style.display = "none";
+      if (els.drawer) els.drawer.style.display = "none";
+      updateHud();
     }
 
     updateFollowCamera();
@@ -377,8 +365,11 @@ function clearAircraft() {
   state.aircraft.clear();
   state.selectedFlightId = null;
   state.viewer.trackedEntity = undefined;
+
+  if (els.selectedStrip) els.selectedStrip.style.display = "none";
+  if (els.drawer) els.drawer.style.display = "none";
+
   updateHud();
-  updateInfoPanels();
 }
 
 function connect() {
@@ -400,7 +391,7 @@ function connect() {
   clearAircraft();
   if (els.topServer) els.topServer.textContent = state.sessionName || "Unknown server";
 
-  setStatus("Connected. Starting live tracking...");
+  setStatus("Connected. Showing live aircraft...");
   startPolling();
 }
 
@@ -442,11 +433,8 @@ function setupEvents() {
   els.followBtn?.addEventListener("click", () => {
     state.followSelected = !state.followSelected;
     els.followBtn.classList.toggle("active", state.followSelected);
-    if (!state.followSelected) {
-      state.viewer.trackedEntity = undefined;
-    } else {
-      updateFollowCamera();
-    }
+    if (!state.followSelected) state.viewer.trackedEntity = undefined;
+    else updateFollowCamera();
   });
 }
 
@@ -459,6 +447,11 @@ function setupEvents() {
     setupEvents();
     setupTabs();
     setMode("ife");
+
+    // Hide details by default until user clicks a plane
+    if (els.selectedStrip) els.selectedStrip.style.display = "none";
+    if (els.drawer) els.drawer.style.display = "none";
+
     await loadSessions();
     setStatus("Ready. Select server and connect.");
   } catch (e) {
