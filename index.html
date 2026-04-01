@@ -7,11 +7,13 @@
 
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
-
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body class="mode-ife">
   <div id="app">
+    <main id="cesiumContainer"></main>
+
+    <!-- Left control panel -->
     <aside class="control-shell glass" id="controlShell">
       <div class="brand">
         <div class="brand-badge">✈</div>
@@ -50,6 +52,7 @@
       <div id="status" class="status">Initializing…</div>
     </aside>
 
+    <!-- Top bar -->
     <header class="topbar glass">
       <div>
         <strong id="topMode">IFE Mode</strong>
@@ -57,10 +60,63 @@
         <span id="topServer">No server selected</span>
       </div>
       <div class="top-actions">
+        <button id="followBtn">Follow Selected</button>
         <button id="togglePanelBtn">Hide Panel</button>
       </div>
     </header>
 
+    <!-- Right drawer -->
+    <section id="flightDrawer" class="drawer glass">
+      <div class="drawer-tabs">
+        <button id="tabFlightInfo" class="tab active">Flight Info</button>
+        <button id="tabGlass" class="tab">Glass Cockpit</button>
+      </div>
+
+      <div id="panelFlightInfo" class="drawer-panel">
+        <div class="kv"><span>Callsign</span><strong id="fiCallsign">-</strong></div>
+        <div class="kv"><span>Pilot</span><strong id="fiUser">-</strong></div>
+        <div class="kv-row">
+          <div class="kv"><span>Altitude</span><strong id="fiAlt">-</strong></div>
+          <div class="kv"><span>Speed</span><strong id="fiSpd">-</strong></div>
+        </div>
+        <div class="kv-row">
+          <div class="kv"><span>Heading</span><strong id="fiHdg">-</strong></div>
+          <div class="kv"><span>Vertical Speed</span><strong id="fiVs">-</strong></div>
+        </div>
+        <div class="kv-row">
+          <div class="kv"><span>Latitude</span><strong id="fiLat">-</strong></div>
+          <div class="kv"><span>Longitude</span><strong id="fiLon">-</strong></div>
+        </div>
+      </div>
+
+      <div id="panelGlass" class="drawer-panel" style="display:none;">
+        <div class="glass-grid">
+          <div class="mock-gauge">PFD</div>
+          <div class="mock-gauge">ND</div>
+          <div class="mock-gauge">ENG</div>
+          <div class="mock-gauge">F-PLAN</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom selected flight strip -->
+    <section id="selectedStrip" class="selected-strip glass" style="display:none;">
+      <div class="strip-left">
+        <div class="plane-badge">✈</div>
+        <div>
+          <h3 id="stripCallsign">-</h3>
+          <p id="stripType">-</p>
+          <small id="stripPilot">-</small>
+        </div>
+      </div>
+      <div class="strip-metrics">
+        <div><span>GS</span><strong id="stripGs">-</strong></div>
+        <div><span>ALT</span><strong id="stripAlt">-</strong></div>
+        <div><span>V/S</span><strong id="stripVs">-</strong></div>
+      </div>
+    </section>
+
+    <!-- Compact HUD -->
     <section class="hud glass">
       <h3>Cockpit HUD</h3>
       <div class="hud-grid">
@@ -70,8 +126,6 @@
         <div><span>HDG</span><strong id="hudHdg">-°</strong></div>
       </div>
     </section>
-
-    <main id="cesiumContainer"></main>
   </div>
 
   <script type="module" src="./app.js"></script>
