@@ -5,30 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Infinite Tracker</title>
 
-  <!-- Cesium -->
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Cesium.js"></script>
-  <link
-    href="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Widgets/widgets.css"
-    rel="stylesheet"
-  />
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
 
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body class="mode-ife">
   <div id="app">
-    <!-- Home / setup panel -->
     <aside class="control-shell glass" id="controlShell">
       <div class="brand">
         <div class="brand-badge">✈</div>
         <div>
           <h1>Infinite Tracker</h1>
-          <p>Live flight visualization</p>
+          <p>Live Infinite Flight tracker</p>
         </div>
-      </div>
-
-      <div class="section">
-        <label for="apiKeyInput">API Key</label>
-        <input id="apiKeyInput" type="password" placeholder="Enter Infinite Flight API key" />
       </div>
 
       <div class="section">
@@ -47,7 +37,7 @@
           </button>
           <button id="radarModeBtn" class="mode-card">
             <span class="mode-title">Radar Mode</span>
-            <span class="mode-sub">Technical ATC-style view</span>
+            <span class="mode-sub">Technical radar view</span>
           </button>
         </div>
       </div>
@@ -60,7 +50,6 @@
       <div id="status" class="status">Initializing…</div>
     </aside>
 
-    <!-- Top info bar -->
     <header class="topbar glass">
       <div>
         <strong id="topMode">IFE Mode</strong>
@@ -72,7 +61,6 @@
       </div>
     </header>
 
-    <!-- HUD -->
     <section class="hud glass">
       <h3>Cockpit HUD</h3>
       <div class="hud-grid">
@@ -83,7 +71,6 @@
       </div>
     </section>
 
-    <!-- Cesium -->
     <main id="cesiumContainer"></main>
   </div>
 
