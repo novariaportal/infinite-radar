@@ -1,18 +1,19 @@
-
 const APP_NAME = "Infinite Tracker";
 
 const DEFAULT_API_KEY = "tyy8znhl0u5kbbb2vuvdhfetmsil041u";
 const CESIUM_ION_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3MDU4NWI1YS03ZGUxLTRmMzEtODEwZi01MDNlM2QyMTg5MzAiLCJpZCI6NDExNTkzLCJpYXQiOjE3NzQ5MjgxNjh9.NeKegq8BpQ4KqIs2hJWNgoEy2c0vidgNg869ldUVFew";
 const API_BASE = "https://api.infiniteflight.com/public/v2";
 
-
 const POLL_MS = 5000;
 const TRAIL_LENGTH = 120;
-const PLANE_ICON = "https://infinite-tracker.tech/plane.png";
+const PLANE_ICON = "https://infinite-tracker.tech/plane.svg";
+const USE_VECTOR_ICON_PRIMARY = false; // use hosted svg directly
 
-// Keep this true until you visually confirm planes.
-// You should see yellow dots even if billboard fails.
+// Keep true for guaranteed visibility while validating billboard behavior
 const DEBUG_FORCE_POINTS = true;
+
+// Use vector transparent icon as primary to avoid opaque PNG/background issues
+const USE_VECTOR_ICON_PRIMARY = true;
 
 const state = {
   apiKey: DEFAULT_API_KEY,
@@ -29,13 +30,16 @@ const state = {
   boundariesEnabled: true,
   currentBaseLayer: null,
 
-  didInitialZoom: false
+  didInitialZoom: false,
+  vectorPlaneIcon: null
 };
 
 const els = {
   serverSelect: document.getElementById("serverSelect"),
   connectBtn: document.getElementById("connectBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
+  openRandomBtn: document.getElementById("openRandomBtn"),
+
   ifeModeBtn: document.getElementById("ifeModeBtn"),
   radarModeBtn: document.getElementById("radarModeBtn"),
   status: document.getElementById("status"),
@@ -112,6 +116,16 @@ async function apiGet(path) {
   return json.result;
 }
 
+function makePlaneIconDataUrl(color = "#ffffff") {
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
+  <g fill="${color}" stroke="#0b0f18" stroke-width="2.2" stroke-linejoin="round">
+    <path d="M34 4h4l4 21 18 9v5l-20-3-2 10 7 6v4l-9-3-9 3v-4l7-6-2-10-20 3v-5l18-9z"/>
+  </g>
+</svg>`;
+  return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+}
+
 function ensureStyleButtons() {
   const topActions = document.querySelector(".top-actions");
   if (!topActions) return;
@@ -156,7 +170,6 @@ async function applyScreenshotLikeGlobeStyle() {
   state.viewer.imageryLayers.add(baseLayer);
   state.currentBaseLayer = baseLayer;
 
-  // "boundary feel" toggle
   state.viewer.scene.globe.showGroundAtmosphere = !!state.boundariesEnabled;
   state.viewer.scene.globe.enableLighting = true;
   state.viewer.scene.skyAtmosphere.show = true;
@@ -222,9 +235,7 @@ function initCesium() {
 
   state.viewer.screenSpaceEventHandler.setInputAction((click) => {
     const picked = state.viewer.scene.pick(click.position);
-    if (picked?.id?.id && state.aircraft.has(picked.id.id)) {
-      selectFlight(picked.id.id);
-    }
+    if (picked?.id?.id && state.aircraft.has(picked.id.id)) selectFlight(picked.id.id);
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
   window.__IT_VIEWER__ = state.viewer;
@@ -233,8 +244,8 @@ function initCesium() {
 async function loadSessions() {
   setStatus("Loading sessions...");
   const sessions = await apiGet("/sessions");
-  if (!els.serverSelect) return;
 
+  if (!els.serverSelect) return;
   els.serverSelect.innerHTML = `<option value="">Select server</option>`;
   sessions.forEach((s) => {
     const opt = document.createElement("option");
@@ -257,14 +268,16 @@ function setMode(mode) {
 }
 
 function createAircraftEntity(f, pos, sampled) {
+  const imageSource = USE_VECTOR_ICON_PRIMARY ? state.vectorPlaneIcon : PLANE_ICON;
+
   return state.viewer.entities.add({
     id: f.flightId,
     position: sampled,
     billboard: {
-      image: PLANE_ICON,
+      image: imageSource,
       show: true,
-      width: 48,
-      height: 48,
+      width: 42,
+      height: 42,
       scale: 1.0,
       color: Cesium.Color.WHITE,
       rotation: Cesium.Math.toRadians((f.heading || 0) - 90),
@@ -276,7 +289,7 @@ function createAircraftEntity(f, pos, sampled) {
     },
     point: {
       show: DEBUG_FORCE_POINTS,
-      pixelSize: 10,
+      pixelSize: 8,
       color: Cesium.Color.YELLOW,
       outlineColor: Cesium.Color.BLACK,
       outlineWidth: 2,
@@ -296,15 +309,13 @@ function createAircraftEntity(f, pos, sampled) {
     polyline: {
       positions: [pos],
       width: 2,
-      material: Cesium.Color.fromCssColorString("#7ec8ff").withAlpha(0.3)
+      material: Cesium.Color.fromCssColorString("#7ec8ff").withAlpha(0.35)
     }
   });
 }
 
 function upsertAircraft(f) {
   const now = Cesium.JulianDate.now();
-
-  // clamp weird altitude values safely
   const altitudeFeet = Number.isFinite(f.altitude) ? f.altitude : 0;
   const altitudeMeters = Math.max(0, altitudeFeet * 0.3048);
 
@@ -353,11 +364,14 @@ function updateSelectedStyles() {
   for (const [id, rec] of state.aircraft.entries()) {
     const selected = id === state.selectedFlightId;
     rec.entity.billboard.scale = selected ? 1.25 : 1.0;
-    rec.entity.billboard.color = Cesium.Color.WHITE;
+    rec.entity.billboard.color = selected
+      ? Cesium.Color.fromCssColorString("#34f5c5")
+      : Cesium.Color.WHITE;
+
     rec.entity.polyline.width = selected ? 3 : 2;
     rec.entity.polyline.material = selected
-      ? Cesium.Color.fromCssColorString("#34f5c5").withAlpha(0.88)
-      : Cesium.Color.fromCssColorString("#7ec8ff").withAlpha(0.3);
+      ? Cesium.Color.fromCssColorString("#34f5c5").withAlpha(0.9)
+      : Cesium.Color.fromCssColorString("#7ec8ff").withAlpha(0.35);
   }
 }
 
@@ -367,6 +381,22 @@ function selectFlight(flightId) {
   if (els.selectedStrip) els.selectedStrip.style.display = "flex";
   updateSelectedStyles();
   updateInfoPanels();
+}
+
+function openRandomAircraft() {
+  const arr = Array.from(state.aircraft.values());
+  if (!arr.length) return setStatus("No aircraft loaded yet", true);
+
+  const pick = arr[Math.floor(Math.random() * arr.length)];
+  const f = pick.last;
+  if (!f) return;
+
+  state.viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(f.longitude, f.latitude, Math.max(120000, (f.altitude || 0) * 0.3048 + 100000)),
+    duration: 1.6
+  });
+
+  selectFlight(f.flightId);
 }
 
 function updateHud(f) {
@@ -410,6 +440,7 @@ function updateGlassCockpit(f) {
     els.gcFpln.innerHTML = `
       <div>ACTIVE FLIGHT</div>
       <div>CALLSIGN ${f.callsign || "-"}</div>
+      <div>PILOT ${f.username || "-"}</div>
       <div>POS ${lat}, ${lon}</div>
       <div>HDG ${hdg} • GS ${gs} • ALT ${alt}</div>
       <div>V/S ${vs} fpm</div>
@@ -470,10 +501,10 @@ async function pollFlights() {
     removeMissingAircraft(activeIds);
 
     if (!state.didInitialZoom && flights.length > 0) {
-      const first = flights[0];
+      const first = flights[Math.floor(Math.random() * flights.length)];
       state.viewer.camera.flyTo({
         destination: Cesium.Cartesian3.fromDegrees(first.longitude, first.latitude, 2500000),
-        duration: 1.5
+        duration: 1.4
       });
       state.didInitialZoom = true;
     }
@@ -543,9 +574,12 @@ function setupTabs() {
 
 function setupEvents() {
   els.connectBtn?.addEventListener("click", connect);
+
   els.refreshBtn?.addEventListener("click", () => {
     loadSessions().catch((e) => setStatus(`Refresh error: ${e.message}`, true));
   });
+
+  els.openRandomBtn?.addEventListener("click", openRandomAircraft);
 
   els.ifeModeBtn?.addEventListener("click", () => setMode("ife"));
   els.radarModeBtn?.addEventListener("click", () => setMode("radar"));
@@ -571,13 +605,14 @@ function setupEvents() {
   if (els.title) els.title.textContent = APP_NAME;
 
   try {
-    console.log("Plane icon URL:", PLANE_ICON);
+    console.log("Plane PNG URL:", PLANE_ICON);
+    state.vectorPlaneIcon = makePlaneIconDataUrl("#ffffff");
 
     // 1) globe first
     initCesium();
     setStatus("Globe ready. Applying map style...");
 
-    // 2) style
+    // 2) screenshot-like globe style
     await applyScreenshotLikeGlobeStyle();
 
     // 3) controls/ui
