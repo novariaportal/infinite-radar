@@ -1,3 +1,4 @@
+
 const APP_NAME = "Infinite Tracker";
 
 const DEFAULT_API_KEY = "tyy8znhl0u5kbbb2vuvdhfetmsil041u";
@@ -7,9 +8,11 @@ const API_BASE = "https://api.infiniteflight.com/public/v2";
 
 const POLL_MS = 5000;
 const TRAIL_LENGTH = 120;
+const PLANE_ICON = "https://infinite-tracker.tech/plane.png";
 
-// optional fallback (not primary)
-const PLANE_ICON_FALLBACK = "https://infinite-tracker.tech/plane.png";
+// Keep this true until you visually confirm planes.
+// You should see yellow dots even if billboard fails.
+const DEBUG_FORCE_POINTS = true;
 
 const state = {
   apiKey: DEFAULT_API_KEY,
@@ -26,7 +29,7 @@ const state = {
   boundariesEnabled: true,
   currentBaseLayer: null,
 
-  vectorPlaneIcon: null
+  didInitialZoom: false
 };
 
 const els = {
@@ -109,16 +112,6 @@ async function apiGet(path) {
   return json.result;
 }
 
-function makePlaneIconDataUrl(color = "#ffffff") {
-  const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
-  <g fill="${color}" stroke="#0b0f18" stroke-width="2.2" stroke-linejoin="round">
-    <path d="M34 4h4l4 21 18 9v5l-20-3-2 10 7 6v4l-9-3-9 3v-4l7-6-2-10-20 3v-5l18-9z"/>
-  </g>
-</svg>`;
-  return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
-}
-
 function ensureStyleButtons() {
   const topActions = document.querySelector(".top-actions");
   if (!topActions) return;
@@ -163,6 +156,7 @@ async function applyScreenshotLikeGlobeStyle() {
   state.viewer.imageryLayers.add(baseLayer);
   state.currentBaseLayer = baseLayer;
 
+  // "boundary feel" toggle
   state.viewer.scene.globe.showGroundAtmosphere = !!state.boundariesEnabled;
   state.viewer.scene.globe.enableLighting = true;
   state.viewer.scene.skyAtmosphere.show = true;
@@ -224,6 +218,7 @@ function initCesium() {
   }
 
   state.viewer.scene.globe.depthTestAgainstTerrain = false;
+  state.viewer.resolutionScale = 1.0;
 
   state.viewer.screenSpaceEventHandler.setInputAction((click) => {
     const picked = state.viewer.scene.pick(click.position);
@@ -266,20 +261,38 @@ function createAircraftEntity(f, pos, sampled) {
     id: f.flightId,
     position: sampled,
     billboard: {
-      image: state.vectorPlaneIcon || new Cesium.ConstantProperty(PLANE_ICON_FALLBACK),
+      image: PLANE_ICON,
       show: true,
-      width: 30,
-      height: 30,
+      width: 48,
+      height: 48,
+      scale: 1.0,
       color: Cesium.Color.WHITE,
       rotation: Cesium.Math.toRadians((f.heading || 0) - 90),
-      alignedAxis: Cesium.Cartesian3.UNIT_Z,
       verticalOrigin: Cesium.VerticalOrigin.CENTER,
       horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY
+      heightReference: Cesium.HeightReference.NONE,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      eyeOffset: new Cesium.Cartesian3(0, 0, -50)
     },
     point: {
-      show: false
+      show: DEBUG_FORCE_POINTS,
+      pixelSize: 10,
+      color: Cesium.Color.YELLOW,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      heightReference: Cesium.HeightReference.NONE
     },
+    label: DEBUG_FORCE_POINTS ? {
+      text: f.callsign || "AC",
+      font: "12px sans-serif",
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 3,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      pixelOffset: new Cesium.Cartesian2(0, -26),
+      disableDepthTestDistance: Number.POSITIVE_INFINITY
+    } : undefined,
     polyline: {
       positions: [pos],
       width: 2,
@@ -290,7 +303,17 @@ function createAircraftEntity(f, pos, sampled) {
 
 function upsertAircraft(f) {
   const now = Cesium.JulianDate.now();
-  const pos = Cesium.Cartesian3.fromDegrees(f.longitude, f.latitude, (f.altitude || 0) * 0.3048);
+
+  // clamp weird altitude values safely
+  const altitudeFeet = Number.isFinite(f.altitude) ? f.altitude : 0;
+  const altitudeMeters = Math.max(0, altitudeFeet * 0.3048);
+
+  const pos = Cesium.Cartesian3.fromDegrees(
+    Number(f.longitude),
+    Number(f.latitude),
+    altitudeMeters
+  );
+
   let rec = state.aircraft.get(f.flightId);
 
   if (!rec) {
@@ -311,6 +334,7 @@ function upsertAircraft(f) {
 
     rec.entity.polyline.positions = rec.trailPositions;
     rec.entity.billboard.rotation = Cesium.Math.toRadians((f.heading || 0) - 90);
+    if (rec.entity.label) rec.entity.label.text = f.callsign || "AC";
     rec.last = f;
   }
 }
@@ -329,9 +353,7 @@ function updateSelectedStyles() {
   for (const [id, rec] of state.aircraft.entries()) {
     const selected = id === state.selectedFlightId;
     rec.entity.billboard.scale = selected ? 1.25 : 1.0;
-    rec.entity.billboard.color = selected
-      ? Cesium.Color.fromCssColorString("#34f5c5")
-      : Cesium.Color.WHITE;
+    rec.entity.billboard.color = Cesium.Color.WHITE;
     rec.entity.polyline.width = selected ? 3 : 2;
     rec.entity.polyline.material = selected
       ? Cesium.Color.fromCssColorString("#34f5c5").withAlpha(0.88)
@@ -369,16 +391,12 @@ function updateGlassCockpit(f) {
   const hdg = Math.round(f.heading || 0);
   const vs = Math.round(f.verticalSpeed || 0);
 
-  // PFD tape values
   if (els.gcSpeedTape) els.gcSpeedTape.textContent = `GS ${gs}`;
   if (els.gcAltTape) els.gcAltTape.textContent = `ALT ${alt}`;
-
-  // ND heading rose needle
   if (els.gcNDR) els.gcNDR.textContent = `HDG ${String(hdg).padStart(3, "0")}`;
   if (els.gcNeedle) els.gcNeedle.style.transform = `translate(-50%, -100%) rotate(${hdg}deg)`;
 
-  // Engine approximation
-  const n1 = Math.max(22, Math.min(106, gs / 5 + 20));
+  const n1 = Math.max(20, Math.min(106, gs / 5 + 20));
   if (els.gcN1L) els.gcN1L.textContent = n1.toFixed(1);
   if (els.gcN1R) els.gcN1R.textContent = n1.toFixed(1);
 
@@ -386,7 +404,6 @@ function updateGlassCockpit(f) {
   if (els.gcEgtL) els.gcEgtL.style.height = `${egtPct}%`;
   if (els.gcEgtR) els.gcEgtR.style.height = `${egtPct}%`;
 
-  // FPLN pane
   if (els.gcFpln) {
     const lat = Number(f.latitude || 0).toFixed(3);
     const lon = Number(f.longitude || 0).toFixed(3);
@@ -396,7 +413,7 @@ function updateGlassCockpit(f) {
       <div>POS ${lat}, ${lon}</div>
       <div>HDG ${hdg} • GS ${gs} • ALT ${alt}</div>
       <div>V/S ${vs} fpm</div>
-      <div>DATA LIVE FROM SESSION ${state.sessionName || "-"}</div>
+      <div>SESSION ${state.sessionName || "-"}</div>
     `;
   }
 }
@@ -452,6 +469,15 @@ async function pollFlights() {
 
     removeMissingAircraft(activeIds);
 
+    if (!state.didInitialZoom && flights.length > 0) {
+      const first = flights[0];
+      state.viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(first.longitude, first.latitude, 2500000),
+        duration: 1.5
+      });
+      state.didInitialZoom = true;
+    }
+
     if (state.selectedFlightId) {
       updateSelectedStyles();
       updateInfoPanels();
@@ -479,6 +505,7 @@ function clearAircraft() {
   state.aircraft.clear();
   state.selectedFlightId = null;
   state.viewer.trackedEntity = undefined;
+  state.didInitialZoom = false;
 
   if (els.drawer) els.drawer.style.display = "none";
   if (els.selectedStrip) els.selectedStrip.style.display = "none";
@@ -544,16 +571,16 @@ function setupEvents() {
   if (els.title) els.title.textContent = APP_NAME;
 
   try {
-    state.vectorPlaneIcon = makePlaneIconDataUrl("#ffffff");
+    console.log("Plane icon URL:", PLANE_ICON);
 
     // 1) globe first
     initCesium();
     setStatus("Globe ready. Applying map style...");
 
-    // 2) screenshot-like globe style
+    // 2) style
     await applyScreenshotLikeGlobeStyle();
 
-    // 3) immediate UI
+    // 3) controls/ui
     ensureStyleButtons();
     updateStyleButtonLabels();
     setupTabs();
@@ -563,7 +590,7 @@ function setupEvents() {
     if (els.selectedStrip) els.selectedStrip.style.display = "none";
     if (els.drawer) els.drawer.style.display = "none";
 
-    // 4) data load
+    // 4) data
     loadSessions()
       .then(() => setStatus("Ready. Select server and connect."))
       .catch((e) => setStatus(`Session load failed: ${e.message}`, true));
