@@ -9,10 +9,11 @@
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <link rel="stylesheet" href="./style.css" />
 </head>
-<body class="mode-ife">
+<body class="mode-radar">
   <div id="app">
     <main id="cesiumContainer"></main>
 
+    <!-- Left control -->
     <aside class="control-shell glass" id="controlShell">
       <div class="brand">
         <div class="brand-badge">✈</div>
@@ -32,11 +33,11 @@
       <div class="section">
         <label>Display Mode</label>
         <div class="mode-grid">
-          <button id="ifeModeBtn" class="mode-card active">
+          <button id="ifeModeBtn" class="mode-card">
             <span class="mode-title">IFE Mode</span>
             <span class="mode-sub">Cinematic passenger view</span>
           </button>
-          <button id="radarModeBtn" class="mode-card">
+          <button id="radarModeBtn" class="mode-card active">
             <span class="mode-title">Radar Mode</span>
             <span class="mode-sub">Technical radar view</span>
           </button>
@@ -48,22 +49,27 @@
         <button id="refreshBtn">Refresh Sessions</button>
       </div>
 
+      <button id="openRandomBtn" class="mt8">Open Random Aircraft</button>
+
       <div id="status" class="status">Initializing…</div>
     </aside>
 
+    <!-- Top bar -->
     <header class="topbar glass">
       <div>
-        <strong id="topMode">IFE Mode</strong>
+        <strong id="topMode">Radar Mode</strong>
         <span class="muted">•</span>
         <span id="topServer">No server selected</span>
       </div>
       <div class="top-actions">
+        <button id="boundariesToggleBtn">Boundaries: ON</button>
+        <button id="labelsToggleBtn">Map Labels: ON</button>
         <button id="followBtn">Follow Selected</button>
         <button id="togglePanelBtn">Hide Panel</button>
       </div>
     </header>
 
-    <!-- Right drawer -->
+    <!-- Radar drawer -->
     <section id="flightDrawer" class="drawer glass" style="display:none;">
       <div class="drawer-head">
         <div>
@@ -107,10 +113,7 @@
           <div class="instrument nd">
             <div class="instr-title">ND</div>
             <div class="nd-face">
-              <div class="ring r1"></div>
-              <div class="ring r2"></div>
-              <div class="ring r3"></div>
-              <div class="ring r4"></div>
+              <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><div class="ring r4"></div>
               <div class="needle" id="gcNeedle"></div>
               <div class="nd-center">▲</div>
               <div class="nd-readout" id="gcNDR">HDG 000</div>
@@ -120,14 +123,8 @@
           <div class="instrument eng">
             <div class="instr-title">ENG</div>
             <div class="eng-wrap">
-              <div class="eng-gauge">
-                <span>L N1</span>
-                <strong id="gcN1L">00.0</strong>
-              </div>
-              <div class="eng-gauge">
-                <span>R N1</span>
-                <strong id="gcN1R">00.0</strong>
-              </div>
+              <div class="eng-gauge"><span>L N1</span><strong id="gcN1L">00.0</strong></div>
+              <div class="eng-gauge"><span>R N1</span><strong id="gcN1R">00.0</strong></div>
             </div>
             <div class="eng-bars">
               <div class="bar"><i id="gcEgtL"></i></div>
@@ -146,6 +143,7 @@
       </div>
     </section>
 
+    <!-- Bottom selected strip -->
     <section id="selectedStrip" class="selected-strip glass" style="display:none;">
       <div class="strip-left">
         <div class="plane-badge">✈</div>
@@ -162,13 +160,101 @@
       </div>
     </section>
 
-    <section class="hud glass">
+    <!-- Floating HUD -->
+    <section id="hudCard" class="hud glass">
       <h3>Cockpit HUD</h3>
       <div class="hud-grid">
         <div><span>Callsign</span><strong id="hudCallsign">-</strong></div>
         <div><span>ALT</span><strong id="hudAlt">- ft</strong></div>
         <div><span>SPD</span><strong id="hudSpd">- kts</strong></div>
         <div><span>HDG</span><strong id="hudHdg">-°</strong></div>
+      </div>
+    </section>
+
+    <!-- IFE overlay flow -->
+    <section id="ifeOverlay" class="ife-overlay hidden">
+      <!-- Screen A -->
+      <div id="ifeWelcome" class="ife-welcome">
+        <div class="welcome-left">
+          <p>WELCOME ABOARD</p>
+          <h2 id="welcomeCallsign">CX33</h2>
+          <h1><span id="fromCode">SFO</span> TO <span id="toCode">HKG</span></h1>
+          <button id="ifeStartBtn" class="primary big">START</button>
+        </div>
+      </div>
+
+      <!-- Screen B -->
+      <div id="ifePanel" class="ife-panel hidden">
+        <div class="ife-head">
+          <div>
+            <h2 id="ifeTitle">--</h2>
+            <p id="ifeSub">Aircraft • Pilot</p>
+          </div>
+          <div class="ife-head-actions">
+            <button id="ifeCloseBtn">✕</button>
+          </div>
+        </div>
+
+        <div class="ife-tabs">
+          <button id="ifeTabFlightInfo" class="active">FLIGHT INFO</button>
+          <button id="ifeTabGlass">GLASS COCKPIT</button>
+        </div>
+
+        <div id="ifeFlightInfoView" class="ife-view">
+          <div class="stats-row">
+            <div class="stat"><span>SPEED (GS)</span><strong id="ifeSpd">-</strong></div>
+            <div class="stat"><span>ALTITUDE</span><strong id="ifeAlt">-</strong></div>
+            <div class="stat"><span>HEADING</span><strong id="ifeHdg">-</strong></div>
+            <div class="stat"><span>VERT. SPEED</span><strong id="ifeVs">-</strong></div>
+          </div>
+          <div class="progress-card">
+            <div><small>Departure</small><strong id="ifeDep">YPPH</strong></div>
+            <div class="line"></div>
+            <div><small>Arrival</small><strong id="ifeArr">WMKK</strong></div>
+          </div>
+          <div class="route-card" id="ifeRoute">Route unavailable</div>
+        </div>
+
+        <div id="ifeGlassView" class="ife-view hidden">
+          <div class="glass-grid">
+            <div class="instrument pfd">
+              <div class="instr-title">PFD</div>
+              <div class="pfd-face">
+                <div class="sky"></div><div class="ground"></div><div class="horizon-line"></div><div class="crosshair"></div>
+                <div class="pfd-speed" id="ifeGcSpeed">GS 0</div>
+                <div class="pfd-alt" id="ifeGcAlt">ALT 0</div>
+              </div>
+            </div>
+            <div class="instrument nd">
+              <div class="instr-title">ND</div>
+              <div class="nd-face">
+                <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><div class="ring r4"></div>
+                <div class="needle" id="ifeGcNeedle"></div>
+                <div class="nd-center">▲</div>
+                <div class="nd-readout" id="ifeGcNdr">HDG 000</div>
+              </div>
+            </div>
+            <div class="instrument eng">
+              <div class="instr-title">ENG</div>
+              <div class="eng-wrap">
+                <div class="eng-gauge"><span>L N1</span><strong id="ifeGcN1L">00.0</strong></div>
+                <div class="eng-gauge"><span>R N1</span><strong id="ifeGcN1R">00.0</strong></div>
+              </div>
+              <div class="eng-bars">
+                <div class="bar"><i id="ifeGcEgtL"></i></div>
+                <div class="bar"><i id="ifeGcEgtR"></i></div>
+              </div>
+            </div>
+            <div class="instrument fpln">
+              <div class="instr-title">F-PLAN</div>
+              <div class="fpln-list" id="ifeGcFpln"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="config-bar">
+          <button id="changeViewBtn">Change View</button>
+        </div>
       </div>
     </section>
   </div>
