@@ -1,0 +1,16 @@
+{
+  "name": "Infinite Tracker",
+  "short_name": "Tracker",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#050a14",
+  "theme_color": "#00d2ff",
+  "icons": [
+    {
+      "src": "https://webcdn.infiniteflight.com/static/svgs/logo_white.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
