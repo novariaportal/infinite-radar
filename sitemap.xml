@@ -1,31 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <!-- Homepage -->
+  <!-- Main Live Tracker Map -->
   <url>
-    <loc>https://www.yourdomain.com/</loc>
+    <loc>https://infinite-tracker.tech/</loc>
     <lastmod>2026-04-21</lastmod>
-    <changefreq>weekly</changefreq>
+    <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
-  <!-- Main Page Example (e.g., Services) -->
+  
+  <!-- Radar Mode -->
   <url>
-    <loc>https://www.yourdomain.com/services</loc>
+    <loc>https://infinite-tracker.tech/radar</loc>
     <lastmod>2026-04-21</lastmod>
-    <changefreq>monthly</changefreq>
+    <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
-  <!-- Sub-page Example (e.g., A specific service) -->
+  
+  <!-- IFE (In-Flight Entertainment) Mode -->
   <url>
-    <loc>https://www.yourdomain.com/services/web-design</loc>
+    <loc>https://infinite-tracker.tech/ife</loc>
+    <lastmod>2026-04-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  
+  <!-- About / Documentation / Setup -->
+  <url>
+    <loc>https://infinite-tracker.tech/about</loc>
     <lastmod>2026-04-21</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.64</priority>
-  </url>
-  <!-- Contact Page -->
-  <url>
-    <loc>https://www.yourdomain.com/contact</loc>
-    <lastmod>2026-01-15</lastmod>
-    <changefreq>yearly</changefreq>
-    <priority>0.5</priority>
+    <priority>0.6</priority>
   </url>
 </urlset>
